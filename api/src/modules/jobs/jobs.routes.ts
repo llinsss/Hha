@@ -2,15 +2,11 @@ import { timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { FastifyRequest } from "fastify";
 import { Type } from "typebox";
-import { withTransaction } from "../../db/sql.js";
 import { sha256Hex } from "../../lib/crypto.js";
 import { Errors } from "../../lib/errors.js";
 import { errorResponses } from "../../lib/schemas.js";
-import { expireLapsedHolds } from "../payments/ledger.js";
+import { expireAllLapsedHolds } from "./holds.service.js";
 import { reconcilePayments } from "./reconciliation.service.js";
-
-const BATCH_SIZE = 500;
-const MAX_BATCHES = 20;
 
 /**
  * Scheduler-only endpoints (PRD §7). Authenticated with `Authorization: Bearer
@@ -43,15 +39,7 @@ const jobRoutes: FastifyPluginAsyncTypebox = async (app) => {
         response: { 200: Type.Object({ expired: Type.Integer() }), ...errorResponses(401, 429) },
       },
     },
-    async () => {
-      let expired = 0;
-      for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
-        const count = await withTransaction(app.db, (tx) => expireLapsedHolds(tx, { limit: BATCH_SIZE }));
-        expired += count;
-        if (count < BATCH_SIZE) break;
-      }
-      return { expired };
-    },
+    async () => ({ expired: await expireAllLapsedHolds(app) }),
   );
 
   app.post(

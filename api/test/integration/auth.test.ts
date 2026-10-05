@@ -34,7 +34,7 @@ describe.skipIf(!integration)("authentication", () => {
     expect(response.statusCode).toBe(200);
     const body = response.json<{ accessToken: string; expiresIn: number; user: Record<string, unknown> }>();
     expect(body.expiresIn).toBe(900);
-    expect(body.user).toEqual({ id: user.id, email: user.email, fullName: "Test User", role: "owner", propertyId, mustChangePassword: false });
+    expect(body.user).toEqual({ id: user.id, email: user.email, fullName: "Test User", role: "owner", propertyId, mustChangePassword: false, permissions: expect.arrayContaining(["settings:manage", "payments:confirm"]) });
     expect(body.user).not.toHaveProperty("passwordHash");
     const claims = JSON.parse(Buffer.from(body.accessToken.split(".")[1]!, "base64url").toString()) as Record<string, number | string>;
     expect(Number(claims.exp) - Number(claims.iat)).toBe(900);

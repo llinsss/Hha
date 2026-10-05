@@ -7,8 +7,8 @@ Stack: Fastify 5, TypeORM 1 (query runners, migrations), PostgreSQL 14+, Redis 6
 ## Quick start
 
 ```bash
-cp .env.example .env                  # set JWT_ACCESS_SECRET (openssl rand -base64 48)
-docker compose up -d postgres redis   # or point .env at your own instances
+cp .env.example .env                  # set JWT_ACCESS_SECRET and SETTINGS_ENCRYPTION_KEY
+docker compose -f ../docker-compose.yml up -d postgres redis   # or your own instances
 npm ci
 npm run db:migrate
 npm run dev                           # http://localhost:4000, docs at /docs
@@ -61,6 +61,7 @@ Everything is under `/api/v1` except the health probes, `/openapi.json`, `/docs`
 | `GET /management/inventory`, `POST /…/items`, `POST /…/movements` | `inventory:read` / `:write` | Stock items and the movement ledger |
 | `GET, POST /management/menu`, `PATCH /…/{id}` | `pos:read` / `menu:write` | Menu, recipes, update and archive |
 | `GET, POST /management/pos`, `GET /…/{id}`, `GET, POST /…/shift` | `pos:read` / `:write` | Sales, receipts, cashier shifts |
+| `GET, PATCH /management/settings`, `POST /…/payments/verify` | `settings:manage` (owner only) | Global settings and payment provider keys |
 
 Changes from the legacy paths in PRD §7:
 - Every path gains the `/api/v1` prefix.
@@ -85,9 +86,29 @@ In production the API refuses to start in any of these cases:
 | Server | `PORT`, `HOST`, `TRUST_PROXY_HOPS`, `CORS_ORIGINS`, `DOCS_ENABLED`, timeouts, `BODY_LIMIT_BYTES` |
 | Database / Redis | `DATABASE_URL`, `DATABASE_SSL*`, `DATABASE_POOL_MAX`, `DATABASE_STATEMENT_TIMEOUT_MS`, `REDIS_URL`, `REDIS_KEY_PREFIX` |
 | Auth | `JWT_ACCESS_SECRET`, `JWT_*_TTL_*`, `COOKIE_DOMAIN`, `COOKIE_SECURE`, `COOKIE_SAME_SITE`, login limits |
-| Payments | `PAYMENT_PROVIDER` (`none`, `paystack` or `flutterwave`), `PAYSTACK_SECRET_KEY`, `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_HASH`, `PUBLIC_WEB_URL`, `HOLD_MINUTES` |
-| Booking | `MAX_STAY_NIGHTS`, `BOOKING_HORIZON_DAYS`, `PUBLIC_BOOKING_RATE_LIMIT_MAX` |
-| Operations | `CRON_SECRET`, `BANK_TRANSFER_REVIEW_HOURS`, `RECONCILIATION_WINDOW_HOURS`, `SETUP_SECRET`, `METRICS_TOKEN` |
+| Payments | `SETTINGS_ENCRYPTION_KEY` (encrypts provider keys stored in settings), `PUBLIC_WEB_URL`, provider base URLs and timeout |
+| Booking | `PUBLIC_BOOKING_RATE_LIMIT_MAX` |
+| Operations | `CRON_SECRET`, `RECONCILIATION_WINDOW_HOURS`, `SETUP_SECRET`, `METRICS_TOKEN` |
+
+### Owner-managed settings
+
+The payment provider and its keys, and the booking rules, are **global settings** the owner changes from the web app's Settings page. They are not environment variables. Settings live in the `settings` table, seeded with defaults by a migration: online payments off, a 20-minute hold, 90-night maximum stay, 365-day horizon and a 48-hour transfer review window.
+
+| Setting | Notes |
+| --- | --- |
+| `payments.provider` | `none`, `paystack` or `flutterwave`. Can only be switched on once its keys are saved and `PUBLIC_WEB_URL` is set. |
+| `payments.paystack_secret_key` | Secret. Format-checked (`sk_test_…` / `sk_live_…`). Also verifies Paystack webhooks. |
+| `payments.flutterwave_secret_key`, `payments.flutterwave_webhook_hash` | Secrets |
+| `booking.hold_minutes`, `booking.max_stay_nights`, `booking.horizon_days`, `payments.bank_transfer_review_hours` | Integers, range-checked |
+
+- **Owner only.** `GET`/`PATCH /api/v1/management/settings` and `POST /settings/payments/verify` require `settings:manage`, which only the owner role holds.
+- **Secrets are write-only.**
+  - They are encrypted with AES-256-GCM using `SETTINGS_ENCRYPTION_KEY`, and each ciphertext is bound to its setting name.
+  - Responses show only whether a secret is set and its last four characters.
+  - The audit log records that a secret was replaced or cleared, never its value.
+  - A value that can't be decrypted (wrong key, or tampering) is reported as unreadable, and the provider stays off until the owner re-enters it.
+- **Changes apply immediately on every replica.** Each process caches settings, and a version counter in Redis tells every replica to reload; without Redis they converge within 30 seconds.
+- **Verify.** `POST /settings/payments/verify` asks the provider whether it accepts the saved key.
 
 Each environment (dev, staging, production) needs its own database, Redis and provider keys. Keep every secret in the host's secret store, never in the web repository.
 
@@ -128,17 +149,20 @@ Each environment (dev, staging, production) needs its own database, Redis and pr
 **Refunds**
 - There is no refund operation anywhere. Resolving an exception records a person's decision and changes nothing else.
 
-**Jobs.** The hosting scheduler must call both endpoints with `Authorization: Bearer $CRON_SECRET`:
+**Jobs.** Run both on a schedule. A platform cron (Railway) runs the job script from the API image directly. Any other scheduler can call the HTTP endpoint with `Authorization: Bearer $CRON_SECRET`.
 
 | Endpoint | How often | What it does |
 | --- | --- | --- |
-| `POST /api/v1/cron/expire-payment-holds` | Every 2–5 minutes | Expires lapsed holds and fails their online payments. Availability already ignores lapsed holds, so a late run never oversells. |
-| `POST /api/v1/cron/reconcile-payments` | Hourly | Re-applies every successful provider transaction in the window through the same idempotent path as webhooks, so a missed webhook still settles. Also queues bank transfers still pending after `BANK_TRANSFER_REVIEW_HOURS`. |
+| `node dist/scripts/run-job.js expire-payment-holds` or `POST /api/v1/cron/expire-payment-holds` | Every 2–5 minutes | Expires lapsed holds and fails their online payments. Availability already ignores lapsed holds, so a late run never oversells. |
+| `node dist/scripts/run-job.js reconcile-payments` or `POST /api/v1/cron/reconcile-payments` | Hourly | Re-applies every successful provider transaction in the window through the same idempotent path as webhooks, so a missed webhook still settles. Also queues bank transfers still pending after the `payments.bank_transfer_review_hours` setting. |
 
 **Provider setup**
-1. Set the provider's webhook URL to `https://<api-host>/api/v1/webhooks/payments`.
-2. For Flutterwave, also set the dashboard secret hash to `FLUTTERWAVE_WEBHOOK_HASH`.
-3. Set `PUBLIC_WEB_URL` to the web origin. Guests return to `${PUBLIC_WEB_URL}/payment-result?reference=…`.
+1. Set `PUBLIC_WEB_URL` to the web origin. Guests return to `${PUBLIC_WEB_URL}/payment-result?reference=…`.
+2. As the owner, open **Settings**:
+   - paste the provider's secret key (and, for Flutterwave, the webhook secret hash)
+   - choose the provider
+   - save, then click **Check saved key**
+3. Copy the webhook URL shown in Settings (`${PUBLIC_WEB_URL}/api/v1/webhooks/payments`) into the provider dashboard. The web app forwards it to the API with the raw body intact, so signatures verify.
 
 ## Security model
 
@@ -189,6 +213,7 @@ Each environment (dev, staging, production) needs its own database, Redis and pr
 | Migration | What it does |
 | --- | --- |
 | `LegacyBaseline` | The original schema, idempotent and irreversible |
+| `CreateSettings` | Owner-managed global settings, seeded with defaults |
 | `CreateApiSessions` | Refresh-token sessions |
 | `BookingIntegrityAndPaymentExceptions` | Exclusion constraint, online-checkout columns, POS lifecycle, the exception queue, and indexes for every list path |
 

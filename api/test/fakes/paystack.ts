@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-export const PAYSTACK_TEST_SECRET = "sk_test_fake_paystack_secret_for_tests";
+export const PAYSTACK_TEST_SECRET = "sk_test_a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 
 type Transaction = { id: number; reference: string; amount: number; currency: string; status: "pending" | "success" | "failed"; createdAt: string };
 
@@ -19,9 +19,9 @@ export class FakePaystack {
   baseUrl = "";
   private nextId = 1000;
 
-  async start(): Promise<string> {
+  async start(port = 0): Promise<string> {
     this.server = createServer((request, response) => void this.handle(request, response));
-    await new Promise<void>((resolve) => this.server?.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => this.server?.listen(port, "127.0.0.1", resolve));
     this.baseUrl = `http://127.0.0.1:${(this.server?.address() as AddressInfo).port}`;
     return this.baseUrl;
   }
@@ -53,8 +53,15 @@ export class FakePaystack {
       response.writeHead(status, { "content-type": "application/json" });
       response.end(JSON.stringify(body));
     };
-    if (request.headers.authorization !== `Bearer ${PAYSTACK_TEST_SECRET}`) return send(401, { status: false, message: "Invalid key" });
     const url = new URL(request.url ?? "/", "http://fake");
+    // Test-only control surface (used by end-to-end scripts): simulate the guest paying.
+    const control = /^\/__control\/(succeed|webhook)\/(.+)$/.exec(url.pathname);
+    if (control) {
+      const reference = decodeURIComponent(control[2] ?? "");
+      if (control[1] === "succeed") return send(200, this.succeed(reference));
+      return send(200, this.webhook(reference));
+    }
+    if (request.headers.authorization !== `Bearer ${PAYSTACK_TEST_SECRET}`) return send(401, { status: false, message: "Invalid key" });
     let raw = "";
     for await (const chunk of request) raw += String(chunk);
 

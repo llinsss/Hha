@@ -78,6 +78,13 @@ export function createFlutterwave(config: { secretKey: string; webhookHash: stri
       return { reference, outcome: status, eventId: `flutterwave:${id}:${status}` };
     },
 
+    async verifyCredentials() {
+      const response = await request("/v3/transactions?page=1");
+      if (response.status === 401 || response.status === 403) return false;
+      if (response.status !== 200 || response.body?.status !== "success") throw new ProviderError("Flutterwave credential check failed", true);
+      return true;
+    },
+
     async *listSuccessful(from, to) {
       for (let page = 1; page <= MAX_LIST_PAGES; page += 1) {
         const query = new URLSearchParams({ from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10), status: "successful", page: String(page) });

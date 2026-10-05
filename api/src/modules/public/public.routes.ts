@@ -3,6 +3,8 @@ import { withConnection } from "../../db/sql.js";
 import { canonicalJson, sha256Hex } from "../../lib/crypto.js";
 import { addDays, businessToday, nightsBetween } from "../../lib/dates.js";
 import { Errors } from "../../lib/errors.js";
+import { errorResponses } from "../../lib/schemas.js";
+import { Type } from "typebox";
 import { OCCUPYING_STAY_SQL, SELLABLE_ROOM_SQL, createPublicBooking } from "./booking.service.js";
 import { AvailabilitySchema, CreatePublicReservationSchema, PaymentStatusSchema } from "./public.schemas.js";
 import { optionalText } from "../../lib/text.js";
@@ -13,7 +15,8 @@ const publicRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const { checkIn, checkOut, guests } = request.query;
     const nights = nightsBetween(checkIn, checkOut);
     const today = businessToday();
-    if (nights < 1 || nights > app.config.booking.maxStayNights || checkIn < today || checkIn > addDays(today, app.config.booking.horizonDays)) {
+    const rules = await app.settings.current();
+    if (nights < 1 || nights > rules.maxStayNights || checkIn < today || checkIn > addDays(today, rules.horizonDays)) {
       return { roomTypes: [] };
     }
     const roomTypes = await withConnection(app.db, (sql) =>
@@ -32,6 +35,26 @@ const publicRoutes: FastifyPluginAsyncTypebox = async (app) => {
     );
     return { roomTypes };
   });
+
+  app.get(
+    "/property",
+    {
+      config: { rateLimit: { max: 120, timeWindow: 60_000 } },
+      schema: {
+        tags: ["public"],
+        summary: "The property served by the public site",
+        response: { 200: Type.Object({ name: Type.String(), timezone: Type.String(), currency: Type.String() }), ...errorResponses(429, 503) },
+      },
+    },
+    async (_request, reply) => {
+      const property = await withConnection(app.db, (sql) =>
+        sql.maybeOne<{ name: string; timezone: string; currency: string }>(`SELECT name, timezone, currency FROM properties ORDER BY created_at, id LIMIT 1`),
+      );
+      if (!property) throw Errors.unavailable("The property has not been set up yet", "PROPERTY_NOT_CONFIGURED");
+      reply.header("cache-control", "public, max-age=300");
+      return property;
+    },
+  );
 
   app.post(
     "/reservations",

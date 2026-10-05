@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Property Operations",
-  description: "Houzz Hills staff and property operations workspace.",
+  description: "Staff and property operations workspace.",
   robots: { index: false, follow: false },
 };
 

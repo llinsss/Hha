@@ -7,7 +7,7 @@ import { hasPermission } from "../../lib/permissions.js";
 import { Nullable, Timestamp, Uuid, errorResponses } from "../../lib/schemas.js";
 import { requirePrincipal } from "../auth/principal.js";
 import { ReservationRow } from "../reservations/reservations.schemas.js";
-import { RESERVATION_SELECT, type ReservationRow as ReservationRecord } from "../reservations/reservations.service.js";
+import { RESERVATION_SELECT, withActions, type ReservationRow as ReservationRecord } from "../reservations/reservations.service.js";
 
 const TODAY = `(now() AT TIME ZONE '${BUSINESS_TIMEZONE}')::date`;
 const ACTIVITY_SCAN = 100;
@@ -137,7 +137,7 @@ const dashboardRoutes: FastifyPluginAsyncTypebox = async (app) => {
             ...(canSeeMoney ? { room_revenue_kobo, restaurant_revenue_kobo, restaurant_orders, pending_transfers } : {}),
             ...(hasPermission(principal.role, "payments:confirm") ? { open_payment_exceptions } : {}),
           },
-          reservations,
+          reservations: withActions(reservations, principal.role),
           activity: events
             .filter((event) => canSeeEvent(principal.role, event.event_type))
             .slice(0, ACTIVITY_LIMIT)

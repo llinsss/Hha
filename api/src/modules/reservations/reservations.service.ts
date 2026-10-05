@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { withConnection, withTransaction, type Sql } from "../../db/sql.js";
 import { businessToday, nightsBetween } from "../../lib/dates.js";
 import { Errors } from "../../lib/errors.js";
+import { hasPermission, type Role } from "../../lib/permissions.js";
 import { recordEvent } from "../../lib/events.js";
 import { decodeCursor, toPage } from "../../lib/pagination.js";
 import type { Principal } from "../auth/session.service.js";
@@ -41,13 +42,26 @@ export const RESERVATION_SELECT = `
 
 const MAX_RANGE_DAYS = 366;
 
+/** Adds the caller-specific actions every client renders instead of re-deriving the rules. */
+export function withActions<T extends { status: string; payment_status: string; check_in: string }>(rows: T[], role: Role) {
+  const writer = hasPermission(role, "reservations:write");
+  const today = businessToday();
+  return rows.map((row) => ({
+    ...row,
+    actions: {
+      next_statuses: writer ? (TRANSITIONS[row.status] ?? []).filter((next) => !((next === "checked_in" || next === "no_show") && row.check_in > today)) : [],
+      record_payment: writer && !CLOSED_STAYS.has(row.status) && (row.payment_status === "unpaid" || row.payment_status === "part_paid"),
+    },
+  }));
+}
+
 function likePattern(term: string): string {
   return `%${term.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
 }
 
 export async function listReservations(
   app: FastifyInstance,
-  propertyId: string,
+  principal: Principal,
   filters: { status?: string[]; from?: string; to?: string; q?: string; limit: number; cursor?: string },
 ) {
   if (filters.from && filters.to) {
@@ -67,7 +81,7 @@ export async function listReservations(
         ORDER BY r.check_in DESC, r.created_at DESC, r.id DESC
         LIMIT $9`,
       [
-        propertyId,
+        principal.propertyId,
         filters.status?.length ? filters.status : null,
         filters.from ?? null,
         filters.to ?? null,
@@ -80,13 +94,13 @@ export async function listReservations(
     ),
   );
   const page = toPage(rows, filters.limit, (row) => [row.check_in, row.cursor_created, row.id]);
-  return { reservations: page.items, nextCursor: page.nextCursor };
+  return { reservations: withActions(page.items, principal.role), nextCursor: page.nextCursor };
 }
 
-export async function getReservation(sql: Sql, propertyId: string, id: string): Promise<ReservationRow> {
-  const row = await sql.maybeOne<ReservationRow>(`${RESERVATION_SELECT} WHERE r.id = $1 AND r.property_id = $2`, [id, propertyId]);
+export async function getReservation(sql: Sql, principal: Principal, id: string) {
+  const row = await sql.maybeOne<ReservationRow>(`${RESERVATION_SELECT} WHERE r.id = $1 AND r.property_id = $2`, [id, principal.propertyId]);
   if (!row) throw Errors.notFound("Reservation not found");
-  return row;
+  return withActions([row], principal.role)[0]!;
 }
 
 /** Staff booking for a specific physical room (PRD §4.2). */
@@ -94,8 +108,8 @@ export async function createStaffReservation(
   app: FastifyInstance,
   principal: Principal,
   input: { name: string; email: string | null; phone: string | null; roomId: string; checkIn: string; checkOut: string; guests: number; notes: string | null },
-): Promise<ReservationRow> {
-  const stay = validateStay(app, input.checkIn, input.checkOut);
+): Promise<ReturnType<typeof withActions<ReservationRow>>[number]> {
+  const stay = validateStay(await app.settings.current(), input.checkIn, input.checkOut);
   return withTransaction(app.db, async (tx) => {
     const room = await tx.maybeOne<{ id: string; room_type: string; nightly_rate_kobo: string; status: string; capacity: number }>(
       `SELECT id, room_type, nightly_rate_kobo::text, status, capacity FROM rooms
@@ -131,7 +145,7 @@ export async function createStaffReservation(
       details: { roomId: room.id, amountKobo: amount.toString(), source: "staff" },
       outbox: { reference },
     });
-    return getReservation(tx, principal.propertyId, created.id);
+    return getReservation(tx, principal, created.id);
   });
 }
 

@@ -1,0 +1,81 @@
+# Full local stack: PostgreSQL, Redis, migrations, API and web.
+#
+#   export JWT_ACCESS_SECRET=$(openssl rand -base64 48)
+#   export SETTINGS_ENCRYPTION_KEY=$(openssl rand -base64 32)
+#   export SETUP_SECRET=$(openssl rand -hex 24)
+#   docker compose up --build
+#
+# Then open http://localhost:3000/management/setup and use SETUP_SECRET once.
+# The web container forwards /api/v1/* to the API, exactly as on Railway.
+name: houzzhills
+
+x-api-env: &api-env
+  # development: allows http://localhost. Production deployments use NODE_ENV=production.
+  NODE_ENV: development
+  DATABASE_URL: postgresql://houzzhills:houzzhills@postgres:5432/houzzhills
+  REDIS_URL: redis://redis:6379/0
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (openssl rand -base64 48)}
+  SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?Set SETTINGS_ENCRYPTION_KEY (openssl rand -base64 32)}
+  SETUP_SECRET: ${SETUP_SECRET:-}
+  CORS_ORIGINS: http://localhost:3000
+  PUBLIC_WEB_URL: http://localhost:3000
+  COOKIE_SECURE: "false"
+  TRUST_PROXY_HOPS: "1"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: houzzhills
+      POSTGRES_PASSWORD: houzzhills
+      POSTGRES_DB: houzzhills
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U houzzhills -d houzzhills"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # AOF persistence so idempotency keys and rate-limit state survive restarts.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build: ./api
+    command: ["node", "dist/scripts/migrate.js", "up"]
+    environment: *api-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: ./api
+    environment: *api-env
+    ports: ["127.0.0.1:4000:4000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      args:
+        API_INTERNAL_URL: http://api:4000
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:

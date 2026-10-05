@@ -5,6 +5,7 @@ import { sha256Hex } from "../../lib/crypto.js";
 import { addDays, businessToday, nightsBetween } from "../../lib/dates.js";
 import { Errors } from "../../lib/errors.js";
 import { recordEvent } from "../../lib/events.js";
+import type { GlobalSettings } from "../settings/settings.registry.js";
 import { expireLapsedHolds, refreshReservationPayment } from "../payments/ledger.js";
 
 /** Statuses that occupy a room for their dates (holds only while unexpired). */
@@ -18,10 +19,10 @@ export const SELLABLE_ROOM_SQL = `ro.active AND ro.status NOT IN ('maintenance',
 export type StayDates = { checkIn: string; checkOut: string; nights: number };
 
 /** Validates a stay against today's business date, the maximum length and the booking horizon. */
-export function validateStay(app: FastifyInstance, checkIn: string, checkOut: string): StayDates {
+export function validateStay(rules: Pick<GlobalSettings, "maxStayNights" | "horizonDays">, checkIn: string, checkOut: string): StayDates {
   const nights = nightsBetween(checkIn, checkOut);
   const today = businessToday();
-  const { maxStayNights, horizonDays } = app.config.booking;
+  const { maxStayNights, horizonDays } = rules;
   if (nights < 1 || nights > maxStayNights) throw Errors.unprocessable(`Choose a stay of 1 to ${maxStayNights} nights`, "INVALID_STAY");
   if (checkIn < today) throw Errors.unprocessable("Check-in must be today or a future date", "INVALID_STAY");
   if (checkIn > addDays(today, horizonDays)) throw Errors.unprocessable(`Bookings open ${horizonDays} days ahead`, "INVALID_STAY");
@@ -86,10 +87,11 @@ type ExistingBooking = {
  * is held across the network. A failed checkout start releases the hold.
  */
 export async function createPublicBooking(app: FastifyInstance, input: PublicBookingInput): Promise<BookingResult> {
-  const provider = app.paymentProvider;
+  const provider = await app.payments.provider();
   const webUrl = app.config.payments.publicWebUrl;
   if (!provider || !webUrl) throw Errors.unavailable("Online payment is temporarily unavailable. Please contact the property to book.", "PAYMENTS_UNAVAILABLE");
-  const stay = validateStay(app, input.checkIn, input.checkOut);
+  const rules = await app.settings.current();
+  const stay = validateStay(rules, input.checkIn, input.checkOut);
   const paymentKey = `public:${sha256Hex(input.idempotencyKey)}`;
 
   const held = await withTransaction(app.db, async (tx) => {
@@ -129,7 +131,7 @@ export async function createPublicBooking(app: FastifyInstance, input: PublicBoo
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_payment', 'public_website', 'pending', $10,
                now() + make_interval(mins => $11))
        RETURNING id, hold_expires_at`,
-      [propertyId, guestId, reference, room.id, input.roomType, stay.checkIn, stay.checkOut, input.guests, amount.toString(), input.notes, app.config.booking.holdMinutes],
+      [propertyId, guestId, reference, room.id, input.roomType, stay.checkIn, stay.checkOut, input.guests, amount.toString(), input.notes, rules.holdMinutes],
     );
     await tx.exec(
       `INSERT INTO payments(property_id, reservation_id, amount_kobo, method, status, provider, provider_reference, idempotency_key, request_fingerprint)

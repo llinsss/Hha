@@ -35,6 +35,8 @@ export const PERMISSIONS = [
   "payments:read",
   "payments:confirm",
   "reports:read",
+  /** Owner only (via "*"): global settings and payment provider keys. */
+  "settings:manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -56,6 +58,24 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> =
 export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
 }
+
+/** Every permission a role holds, for clients deciding what to show (the API still enforces each one). */
+export function permissionsOf(role: Role): Permission[] {
+  return PERMISSIONS.filter((permission) => ROLE_PERMISSIONS[role].has(permission));
+}
+
+/** Labels for roles, shared with clients through the reference endpoint. */
+export const ROLE_LABELS: Readonly<Record<Role, string>> = {
+  owner: "Owner",
+  manager: "Manager",
+  front_desk: "Front desk",
+  housekeeping: "Housekeeping",
+  restaurant_cashier: "Restaurant cashier",
+  restaurant_manager: "Restaurant manager",
+  storekeeper: "Storekeeper",
+  finance: "Finance",
+  auditor: "Auditor",
+};
 
 export function hasPermission(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role].has(permission);

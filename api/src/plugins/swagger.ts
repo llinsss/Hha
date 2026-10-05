@@ -46,6 +46,8 @@ export default fp(
           { name: "inventory", description: "Stock items and movements" },
           { name: "menu", description: "Restaurant menu and recipes" },
           { name: "pos", description: "Restaurant sales, receipts and cashier shifts" },
+          { name: "settings", description: "Owner-only global settings and payment provider keys" },
+          { name: "reference", description: "Labels and allowed values for building forms" },
         ],
       },
       refResolver: { buildLocalReference: (json, _baseUri, _fragment, index) => (typeof json.$id === "string" ? json.$id : `def-${index}`) },

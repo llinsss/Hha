@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { App } from "../../src/app.js";
 import { FakePaystack } from "../fakes/paystack.js";
-import { CRON_SECRET, createTestApp, integration, lagosDate, paystackEnv, primaryPropertyId, seedRoom, signedIn } from "../helpers.js";
+import { CRON_SECRET, createTestApp, enablePaystack, integration, lagosDate, paystackEnv, primaryPropertyId, seedRoom, signedIn } from "../helpers.js";
 
 const PUBLIC = "/api/v1/public";
 
@@ -14,6 +14,7 @@ describe.skipIf(!integration)("public booking, checkout and online settlement", 
   beforeAll(async () => {
     app = await createTestApp(paystackEnv(await paystack.start()));
     propertyId = await primaryPropertyId(app);
+    await enablePaystack(app, propertyId);
   });
   afterAll(async () => {
     await app?.close();

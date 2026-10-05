@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { FastifyRequest } from "fastify";
 import { AppError } from "../../lib/errors.js";
+import { permissionsOf } from "../../lib/permissions.js";
 import { requirePrincipal } from "./principal.js";
 import { AuthService } from "./auth.service.js";
 import { ChangePasswordSchema, LoginSchema, LogoutSchema, RefreshSchema, SessionSchema } from "./auth.schemas.js";
@@ -19,6 +20,7 @@ function toUser(principal: Principal) {
     role: principal.role,
     propertyId: principal.propertyId,
     mustChangePassword: principal.mustChangePassword,
+    permissions: permissionsOf(principal.role),
   };
 }
 

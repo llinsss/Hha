@@ -22,7 +22,8 @@ export async function reconcilePayments(app: FastifyInstance): Promise<Reconcili
   const outcomes: Partial<Record<ProviderOutcome, number>> = {};
   let providerTransactions = 0;
 
-  const provider = app.paymentProvider;
+  const provider = await app.payments.provider();
+  const settings = await app.settings.current();
   if (provider) {
     for await (const transaction of provider.listSuccessful(from, to)) {
       providerTransactions += 1;
@@ -41,7 +42,7 @@ export async function reconcilePayments(app: FastifyInstance): Promise<Reconcili
          FROM pos_orders o
         WHERE o.payment_method = 'bank_transfer' AND o.payment_status = 'pending' AND o.status <> 'voided'
           AND o.created_at < now() - make_interval(hours => $1)`,
-      [app.config.jobs.bankTransferReviewHours],
+      [settings.bankTransferReviewHours],
     );
     let queued = 0;
     for (const transfer of stale) {

@@ -86,6 +86,7 @@ export const EXCEPTION_KINDS = [
 const PaymentException = Type.Object({
   id: Uuid,
   kind: Type.String(),
+  title: Type.String(),
   status: Type.String(),
   reservation_id: Nullable(Uuid),
   reservation_reference: Nullable(Type.String()),

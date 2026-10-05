@@ -31,6 +31,8 @@ export interface PaymentProvider {
   parseWebhook(payload: unknown): WebhookClaim | null;
   /** Successful transactions created in [from, to], for settlement reconciliation. */
   listSuccessful(from: Date, to: Date): AsyncGenerator<VerifiedTransaction>;
+  /** True when the provider accepts the secret key; false when it rejects it. Throws ProviderError if unreachable. */
+  verifyCredentials(): Promise<boolean>;
 }
 
 /** Our reservation references (`HH-…`); anything else from a provider is ignored. */

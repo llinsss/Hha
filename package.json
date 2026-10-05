@@ -1,0 +1,15 @@
+{
+  "name": "houzzhills",
+  "private": true,
+  "description": "Houzz Hills monorepo tooling: Railway infrastructure-as-code. The apps live in api/ and web/.",
+  "type": "module",
+  "scripts": {
+    "railway:check": "tsc --noEmit -p .railway",
+    "railway:plan": "railway config plan",
+    "railway:apply": "railway config apply"
+  },
+  "devDependencies": {
+    "railway": "3.12.0",
+    "typescript": "~6.0.3"
+  }
+}

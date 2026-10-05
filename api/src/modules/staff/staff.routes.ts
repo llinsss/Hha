@@ -70,8 +70,12 @@ const staffRoutes: FastifyPluginAsyncTypebox = async (app) => {
       ),
     );
     const page = toPage(rows, limit, (row) => [row.cursor_created, row.id]);
-    const showPersonal = hasPermission(principal.role, "staff:write");
-    const staff = showPersonal ? page.items : page.items.map((row) => ({ ...row, phone: null, emergency_contact: null, start_date: null }));
+    const manager = hasPermission(principal.role, "staff:write");
+    const staff = page.items.map((row) => ({
+      ...row,
+      ...(manager ? {} : { phone: null, emergency_contact: null, start_date: null }),
+      can_manage: manager && row.user_id !== principal.userId && (principal.role === "owner" || row.role === null || !OWNER_MANAGED_ROLES.has(row.role)),
+    }));
     return { staff, nextCursor: page.nextCursor };
   });
 

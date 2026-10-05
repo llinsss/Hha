@@ -6,6 +6,8 @@ declare module "vitest" {
   export interface ProvidedContext {
     /** An empty, migrated database for the one-time setup tests (no users). */
     setupDatabaseUrl: string | null;
+    /** A migrated database of its own for global-settings tests, which change process-wide state. */
+    settingsDatabaseUrl: string | null;
   }
 }
 
@@ -18,13 +20,14 @@ async function migrateFresh(url: string): Promise<DataSource> {
 }
 
 /**
- * Integration tests need TEST_DATABASE_URL and TEST_REDIS_URL. The database (and
- * a sibling `<name>_setup` database) are wiped and migrated from scratch once
- * per run, so never point them at a database you care about.
+ * Integration tests need TEST_DATABASE_URL and TEST_REDIS_URL. That database and
+ * its siblings `<name>_setup` and `<name>_settings` are wiped and migrated from
+ * scratch once per run, so never point them at a database you care about.
  */
 export default async function setup(project: TestProject): Promise<void> {
   const url = process.env.TEST_DATABASE_URL;
   project.provide("setupDatabaseUrl", null);
+  project.provide("settingsDatabaseUrl", null);
   if (!url) {
     console.warn("TEST_DATABASE_URL/TEST_REDIS_URL not set: integration tests will be skipped.");
     return;
@@ -34,14 +37,18 @@ export default async function setup(project: TestProject): Promise<void> {
   try {
     // The primary property: public booking endpoints serve the oldest property.
     await main.query("INSERT INTO properties(name) VALUES ('Houzz Hills Test Primary')");
-    const setupUrl = new URL(url);
-    const setupName = `${setupUrl.pathname.slice(1)}_setup`;
-    if (!/^[A-Za-z0-9_]+$/.test(setupName)) throw new Error("TEST_DATABASE_URL database name must be alphanumeric");
-    await main.query(`DROP DATABASE IF EXISTS "${setupName}" WITH (FORCE)`);
-    await main.query(`CREATE DATABASE "${setupName}"`);
-    setupUrl.pathname = `/${setupName}`;
-    await (await migrateFresh(setupUrl.href)).destroy();
-    project.provide("setupDatabaseUrl", setupUrl.href);
+    const isolated = async (suffix: string): Promise<string> => {
+      const target = new URL(url);
+      const name = `${target.pathname.slice(1)}_${suffix}`;
+      if (!/^[A-Za-z0-9_]+$/.test(name)) throw new Error("TEST_DATABASE_URL database name must be alphanumeric");
+      await main.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      await main.query(`CREATE DATABASE "${name}"`);
+      target.pathname = `/${name}`;
+      await (await migrateFresh(target.href)).destroy();
+      return target.href;
+    };
+    project.provide("setupDatabaseUrl", await isolated("setup"));
+    project.provide("settingsDatabaseUrl", await isolated("settings"));
   } finally {
     await main.destroy();
   }

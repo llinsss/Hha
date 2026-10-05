@@ -14,8 +14,9 @@ RUN npm run build && npm prune --omit=dev --no-audit --no-fund
 
 FROM ${NODE_IMAGE} AS runtime
 RUN apk add --no-cache tini
+# "::" accepts IPv4 and IPv6, so private networks such as Railway's (IPv6) can reach the API.
 ENV NODE_ENV=production \
-    HOST=0.0.0.0 \
+    HOST=:: \
     PORT=4000
 WORKDIR /app
 COPY --from=build --chown=node:node /app/package.json ./
@@ -26,5 +27,7 @@ EXPOSE 4000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # tini forwards SIGTERM so the server drains connections before exiting.
+# Other entry points in the same image: node dist/scripts/migrate.js up,
+# node dist/scripts/run-job.js <expire-payment-holds|reconcile-payments>.
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "--enable-source-maps", "dist/server.js"]

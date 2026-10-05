@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { StringEnum, errorResponses } from "../../lib/schemas.js";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../../lib/password.js";
-import { ROLES } from "../../lib/permissions.js";
+import { PERMISSIONS, ROLES } from "../../lib/permissions.js";
 
 const SessionUser = Type.Object(
   {
@@ -11,6 +11,7 @@ const SessionUser = Type.Object(
     role: StringEnum(ROLES),
     propertyId: Type.String({ format: "uuid" }),
     mustChangePassword: Type.Boolean(),
+    permissions: Type.Array(StringEnum(PERMISSIONS), { description: "What this user may do; clients use it to decide what to show" }),
   },
   { additionalProperties: false },
 );

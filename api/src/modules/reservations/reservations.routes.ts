@@ -8,7 +8,7 @@ import { optionalText } from "../../lib/text.js";
 const reservationRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get("/", { schema: ListReservationsSchema, preHandler: app.authorize("reservations:read") }, async (request) => {
     const query = request.query;
-    return listReservations(app, requirePrincipal(request).propertyId, { ...query, limit: query.limit ?? 50 });
+    return listReservations(app, requirePrincipal(request), { ...query, limit: query.limit ?? 50 });
   });
 
   app.post("/", { schema: CreateReservationSchema, preHandler: app.authorize("reservations:write") }, async (request, reply) => {

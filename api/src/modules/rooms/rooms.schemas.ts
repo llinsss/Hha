@@ -16,6 +16,7 @@ const Room = Type.Object({
   status: Type.String(),
   active: Type.Boolean(),
   stay: Nullable(Type.Object({ reference: Type.Optional(Type.String()), guest: Type.Optional(Type.String()), checkOut: IsoDate })),
+  next_statuses: Type.Array(StringEnum(ROOM_STATUSES), { description: "States the caller may set next" }),
 });
 
 export const ListRoomsSchema = {

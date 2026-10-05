@@ -1,21 +1,11 @@
-import type { ApiClient } from "./client";
 import { createHttpClient } from "./http";
-import { createSampleClient } from "./sample-client";
 
 export * from "./client";
 export type * from "./types";
 
 /**
- * The single ApiClient used by the whole frontend.
- *
- * - `NEXT_PUBLIC_API_BASE_URL` unset (default): sample mode. The UI runs on
- *   built-in sample data and makes no network requests.
- * - `NEXT_PUBLIC_API_BASE_URL=https://api.houzzhills.com`: HTTP mode against the
- *   standalone API in ../api. Only enable it once the endpoints in http.ts exist there.
+ * The single ApiClient used by the whole web app. By default it calls the API
+ * on the same origin (`/api/v1/*`, forwarded to the API service by
+ * next.config.ts). NEXT_PUBLIC_API_BASE_URL points it at another origin instead.
  */
-function createApiClient(): ApiClient {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return baseUrl ? createHttpClient(baseUrl) : createSampleClient();
-}
-
-export const api: ApiClient = createApiClient();
+export const api = createHttpClient(process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "");

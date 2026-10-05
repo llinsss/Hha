@@ -4,6 +4,7 @@ import { BUSINESS_TIMEZONE } from "../../lib/dates.js";
 import { Errors } from "../../lib/errors.js";
 import { recordEvent } from "../../lib/events.js";
 import { decodeCursor, toPage } from "../../lib/pagination.js";
+import { hasPermission, type Role } from "../../lib/permissions.js";
 import { requirePrincipal } from "../auth/principal.js";
 import { CreateRoomsSchema, ListRoomsSchema, RoomHistorySchema, UpdateRoomSchema, type RoomStatus } from "./rooms.schemas.js";
 import { optionalText } from "../../lib/text.js";
@@ -19,6 +20,14 @@ const TRANSITIONS: Readonly<Record<RoomStatus, readonly RoomStatus[]>> = {
 };
 const HOUSEKEEPING_STATES: readonly RoomStatus[] = ["vacant_clean", "vacant_dirty", "inspected"];
 
+/** The states this caller may move a room to next; clients offer exactly these. */
+export function nextRoomStatuses(role: Role, current: string, inHouse: boolean): RoomStatus[] {
+  if (!hasPermission(role, "rooms:write")) return [];
+  return (TRANSITIONS[current as RoomStatus] ?? []).filter(
+    (status) => (role !== "housekeeping" || HOUSEKEEPING_STATES.includes(status)) && !(inHouse && (status.startsWith("vacant") || status === "inspected")),
+  );
+}
+
 type RoomRow = {
   id: string;
   room_number: string;
@@ -28,6 +37,7 @@ type RoomRow = {
   status: string;
   active: boolean;
   stay: { reference?: string; guest?: string; checkOut: string } | null;
+  in_house: boolean;
 };
 
 const roomRoutes: FastifyPluginAsyncTypebox = async (app) => {
@@ -37,7 +47,7 @@ const roomRoutes: FastifyPluginAsyncTypebox = async (app) => {
     const cursor = decodeCursor(request.query.cursor, 2);
     const rows = await withConnection(app.db, (sql) =>
       sql.rows<RoomRow>(
-        `SELECT ro.id, ro.room_number, ro.room_type, ro.nightly_rate_kobo::text, ro.capacity, ro.status, ro.active,
+        `SELECT ro.id, ro.room_number, ro.room_type, ro.nightly_rate_kobo::text, ro.capacity, ro.status, ro.active, h.in_house,
                 CASE WHEN r.id IS NULL THEN NULL
                      ELSE json_build_object('reference', r.reference, 'guest', g.full_name, 'checkOut', r.check_out::text) END AS stay
            FROM rooms ro
@@ -49,6 +59,7 @@ const roomRoutes: FastifyPluginAsyncTypebox = async (app) => {
               ORDER BY (status = 'checked_in') DESC, created_at DESC
               LIMIT 1) r ON true
            LEFT JOIN guests g ON g.id = r.guest_id
+           CROSS JOIN LATERAL (SELECT EXISTS (SELECT 1 FROM reservations WHERE room_id = ro.id AND status = 'checked_in') AS in_house) h
           WHERE ro.property_id = $1 AND ($2::text IS NULL OR (ro.room_number, ro.id) > ($2::text, $3::uuid))
           ORDER BY ro.room_number, ro.id
           LIMIT $4`,
@@ -56,10 +67,11 @@ const roomRoutes: FastifyPluginAsyncTypebox = async (app) => {
       ),
     );
     const page = toPage(rows, limit, (row) => [row.room_number, row.id]);
-    const rooms =
-      principal.role === "housekeeping"
-        ? page.items.map((room) => ({ ...room, nightly_rate_kobo: null, stay: room.stay ? { checkOut: room.stay.checkOut } : null }))
-        : page.items;
+    const rooms = page.items.map((room) => ({
+      ...room,
+      ...(principal.role === "housekeeping" ? { nightly_rate_kobo: null, stay: room.stay ? { checkOut: room.stay.checkOut } : null } : {}),
+      next_statuses: nextRoomStatuses(principal.role, room.status, room.in_house),
+    }));
     return { rooms, nextCursor: page.nextCursor };
   });
 

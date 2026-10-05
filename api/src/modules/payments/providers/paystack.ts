@@ -74,6 +74,13 @@ export function createPaystack(config: { secretKey: string; baseUrl: string; tim
       return { reference, outcome: "success", eventId: `paystack:${id}:charge.success` };
     },
 
+    async verifyCredentials() {
+      const response = await request("/transaction?perPage=1");
+      if (response.status === 401 || response.status === 403) return false;
+      if (response.status !== 200 || response.body?.status !== true) throw new ProviderError("Paystack credential check failed", true);
+      return true;
+    },
+
     async *listSuccessful(from, to) {
       for (let page = 1; page <= MAX_LIST_PAGES; page += 1) {
         const query = new URLSearchParams({ status: "success", from: from.toISOString(), to: to.toISOString(), perPage: "100", page: String(page) });

@@ -22,6 +22,13 @@ export const ReservationRow = Type.Object({
   payment_status: Type.String(),
   source: Type.String(),
   created_at: Timestamp,
+  actions: Type.Object(
+    {
+      next_statuses: Type.Array(Type.String(), { description: "Stay changes the caller may make now" }),
+      record_payment: Type.Boolean(),
+    },
+    { description: "What the caller may do with this reservation" },
+  ),
 });
 
 const security = [{ bearerAuth: [] }];

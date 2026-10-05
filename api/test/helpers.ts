@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { buildApp, type App } from "../src/app.js";
+import { PAYSTACK_TEST_SECRET } from "./fakes/paystack.js";
 import { loadConfig } from "../src/config/env.js";
 import { hashPassword } from "../src/lib/password.js";
 import type { Role } from "../src/lib/permissions.js";
@@ -7,19 +8,26 @@ import type { Role } from "../src/lib/permissions.js";
 export const integration = Boolean(process.env.TEST_DATABASE_URL && process.env.TEST_REDIS_URL);
 export const WEB_ORIGIN = "https://app.houzzhills.test";
 export const PASSWORD = "correct horse battery staple";
+export const SETTINGS_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 export const CRON_SECRET = "cron-secret-for-integration-tests-0123456789";
 export const SETUP_SECRET = "setup-secret-for-integration-tests-0123456789";
 export const METRICS_TOKEN = "metrics-token-for-integration-tests-012345678";
 
 /** Environment for an app wired to the fake Paystack server. */
 export function paystackEnv(baseUrl: string): Record<string, string> {
-  return {
-    PAYMENT_PROVIDER: "paystack",
-    PAYSTACK_SECRET_KEY: "sk_test_fake_paystack_secret_for_tests",
-    PAYSTACK_BASE_URL: baseUrl,
-    PUBLIC_WEB_URL: "https://app.houzzhills.test",
-    PROVIDER_TIMEOUT_MS: "3000",
-  };
+  return { PAYSTACK_BASE_URL: baseUrl, PROVIDER_TIMEOUT_MS: "3000" };
+}
+
+/** Selects Paystack with the fake server's key through the owner settings API, as an owner would. */
+export async function enablePaystack(app: App, propertyId: string): Promise<void> {
+  const owner = await signedIn(app, propertyId, "owner");
+  const response = await app.inject({
+    method: "PATCH",
+    url: "/api/v1/management/settings",
+    headers: owner.headers,
+    payload: { changes: { "payments.paystack_secret_key": PAYSTACK_TEST_SECRET, "payments.provider": "paystack" } },
+  });
+  if (response.statusCode !== 200) throw new Error(`enabling Paystack failed: ${response.body}`);
 }
 
 export function testConfig(overrides: Record<string, string> = {}) {
@@ -36,6 +44,8 @@ export function testConfig(overrides: Record<string, string> = {}) {
     AUTH_RATE_LIMIT_MAX: "1000",
     RATE_LIMIT_MAX: "10000",
     PUBLIC_BOOKING_RATE_LIMIT_MAX: "10000",
+    SETTINGS_ENCRYPTION_KEY: SETTINGS_ENCRYPTION_KEY,
+    PUBLIC_WEB_URL: "https://app.houzzhills.test",
     CRON_SECRET: CRON_SECRET,
     SETUP_SECRET: SETUP_SECRET,
     METRICS_TOKEN: METRICS_TOKEN,

@@ -5,6 +5,7 @@ const base = {
   DATABASE_URL: "postgresql://user@localhost:5432/db",
   REDIS_URL: "redis://localhost:6379",
   JWT_ACCESS_SECRET: "a-very-long-random-secret-value-0123456789",
+  SETTINGS_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64"),
 };
 
 function issuesOf(env: Record<string, string>): string[] {
@@ -53,15 +54,14 @@ describe("loadConfig", () => {
     );
   });
 
-  it("requires complete provider settings and a return URL for online payments", () => {
-    expect(issuesOf({ ...base, PAYMENT_PROVIDER: "paystack" })).toEqual(
-      expect.arrayContaining([expect.stringMatching(/PAYSTACK_SECRET_KEY/), expect.stringMatching(/PUBLIC_WEB_URL/)]),
+  it("requires a 32-byte settings encryption key and https URLs in production", () => {
+    expect(issuesOf({ ...base, SETTINGS_ENCRYPTION_KEY: Buffer.alloc(16).toString("base64").padEnd(40, "A") })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/SETTINGS_ENCRYPTION_KEY must be 32 bytes/)]),
     );
-    expect(issuesOf({ ...base, PAYMENT_PROVIDER: "flutterwave", FLUTTERWAVE_SECRET_KEY: "FLWSECK-abcdef" })[0]).toMatch(/FLUTTERWAVE_WEBHOOK_HASH/);
-    const config = loadConfig({ ...base, PAYMENT_PROVIDER: "paystack", PAYSTACK_SECRET_KEY: "sk_test_abcdef", PUBLIC_WEB_URL: "https://app.example.com/" });
-    expect(config.payments.provider).toMatchObject({ name: "paystack", baseUrl: "https://api.paystack.co" });
-    expect(config.payments.publicWebUrl).toBe("https://app.example.com");
-    expect(issuesOf({ ...base, NODE_ENV: "production", CORS_ORIGINS: "https://app.example.com", PAYMENT_PROVIDER: "paystack", PAYSTACK_SECRET_KEY: "sk_live_abcdef", PUBLIC_WEB_URL: "http://app.example.com" })[0]).toMatch(/PUBLIC_WEB_URL must use https/);
+    const config = loadConfig({ ...base, PUBLIC_WEB_URL: "https://app.example.com/" });
+    expect(config.payments).toMatchObject({ publicWebUrl: "https://app.example.com", paystackBaseUrl: "https://api.paystack.co" });
+    expect(config.settingsEncryptionKey).toHaveLength(32);
+    expect(issuesOf({ ...base, NODE_ENV: "production", CORS_ORIGINS: "https://app.example.com", PUBLIC_WEB_URL: "http://app.example.com" })[0]).toMatch(/PUBLIC_WEB_URL must use https/);
   });
 
   it("disables docs by default in production", () => {

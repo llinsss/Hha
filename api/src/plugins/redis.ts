@@ -12,6 +12,8 @@ export default fp(
       keyPrefix: app.config.redis.keyPrefix,
       lazyConnect: true,
       connectTimeout: 5_000,
+      // Resolve IPv4 and IPv6: private networks such as Railway's may be IPv6-only.
+      family: 0,
       commandTimeout: 2_000,
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,

@@ -4,6 +4,7 @@ import { BUSINESS_TIMEZONE, nightsBetween } from "../../lib/dates.js";
 import { Errors } from "../../lib/errors.js";
 import { recordEvent } from "../../lib/events.js";
 import { decodeCursor, toPage } from "../../lib/pagination.js";
+import { EXCEPTION_TITLES } from "../reference/labels.js";
 import type { Principal } from "../auth/session.service.js";
 
 export type RegisterFilters = {
@@ -133,6 +134,10 @@ type ExceptionRow = {
   cursor_detected: string;
 };
 
+function withTitle(row: ExceptionRow) {
+  return { ...row, title: EXCEPTION_TITLES[row.kind] ?? row.kind };
+}
+
 const EXCEPTION_SELECT = `
   SELECT e.id, e.kind, e.status, e.reservation_id, r.reference AS reservation_reference, e.payment_id, e.pos_order_id,
          e.provider, e.provider_reference, e.expected_amount_kobo::text, e.received_amount_kobo::text, e.details,
@@ -158,7 +163,7 @@ export async function listExceptions(
     ),
   );
   const page = toPage(rows, filters.limit, (row) => [row.cursor_detected, row.id]);
-  return { exceptions: page.items, nextCursor: page.nextCursor };
+  return { exceptions: page.items.map(withTitle), nextCursor: page.nextCursor };
 }
 
 /** Records the owner/manager decision. Deliberately has no side effects on stays or money. */
@@ -183,6 +188,6 @@ export async function resolveException(app: FastifyInstance, principal: Principa
       details: { note },
     });
     const exception = await tx.one<ExceptionRow>(`${EXCEPTION_SELECT} WHERE e.id = $1`, [id]);
-    return { exception };
+    return { exception: withTitle(exception) };
   });
 }

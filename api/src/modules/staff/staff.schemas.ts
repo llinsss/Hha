@@ -26,6 +26,7 @@ const StaffMember = Type.Object({
   role: Nullable(Type.String()),
   last_attendance_event: Nullable(Type.String()),
   last_attendance_at: Nullable(Timestamp),
+  can_manage: Type.Boolean({ description: "Whether the caller may change this member's status or reset their password" }),
 });
 
 export const ListStaffSchema = {

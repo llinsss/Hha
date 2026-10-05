@@ -26,7 +26,7 @@ const webhookRoutes: FastifyPluginAsyncTypebox = async (app) => {
   });
 
   app.post("/payments", { schema: WebhookSchema, config: { rateLimit: { max: 600, timeWindow: 60_000 } } }, async (request) => {
-    const provider = app.paymentProvider;
+    const provider = await app.payments.provider();
     if (!provider) throw Errors.unavailable("Online payments are not configured", "PAYMENTS_UNAVAILABLE");
     const raw = request.body;
     if (!Buffer.isBuffer(raw)) throw Errors.badRequest("Expected a JSON body", "INVALID_WEBHOOK");

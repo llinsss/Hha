@@ -16,6 +16,8 @@ import posRoutes from "./modules/pos/pos.routes.js";
 import publicRoutes from "./modules/public/public.routes.js";
 import reservationRoutes from "./modules/reservations/reservations.routes.js";
 import roomRoutes from "./modules/rooms/rooms.routes.js";
+import settingsRoutes from "./modules/settings/settings.routes.js";
+import referenceRoutes from "./modules/reference/reference.routes.js";
 import setupRoutes from "./modules/setup/setup.routes.js";
 import staffRoutes from "./modules/staff/staff.routes.js";
 import webhookRoutes from "./modules/webhooks/webhooks.routes.js";
@@ -128,6 +130,8 @@ export function buildApp(config: AppConfig) {
           await management.register(inventoryRoutes, { prefix: "/inventory" });
           await management.register(menuRoutes, { prefix: "/menu" });
           await management.register(posRoutes, { prefix: "/pos" });
+          await management.register(settingsRoutes, { prefix: "/settings" });
+          await management.register(referenceRoutes, { prefix: "/reference" });
         },
         { prefix: "/management" },
       );
