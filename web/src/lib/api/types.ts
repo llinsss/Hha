@@ -21,6 +21,7 @@ export type Permission =
   | "reservations:write"
   | "rooms:read"
   | "rooms:write"
+  | "rooms:create"
   | "staff:read"
   | "staff:write"
   | "attendance:read"

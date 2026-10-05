@@ -75,7 +75,7 @@ const roomRoutes: FastifyPluginAsyncTypebox = async (app) => {
     return { rooms, nextCursor: page.nextCursor };
   });
 
-  app.post("/", { schema: CreateRoomsSchema, preHandler: app.authorize("rooms:write") }, async (request, reply) => {
+  app.post("/", { schema: CreateRoomsSchema, preHandler: app.authorize("rooms:create") }, async (request, reply) => {
     const principal = requirePrincipal(request);
     const { rooms: many, ...single } = request.body;
     const hasSingle = Object.values(single).some((value) => value !== undefined);

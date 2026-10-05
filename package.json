@@ -1,15 +1,24 @@
 {
   "name": "houzzhills",
   "private": true,
-  "description": "Houzz Hills monorepo tooling: Railway infrastructure-as-code. The apps live in api/ and web/.",
+  "description": "Houzz Hills monorepo tooling: Railway infrastructure-as-code and full-stack browser tests. The apps live in api/ and web/.",
   "type": "module",
   "scripts": {
     "railway:check": "tsc --noEmit -p .railway",
     "railway:plan": "railway config plan",
-    "railway:apply": "railway config apply"
+    "railway:apply": "railway config apply",
+    "test:e2e": "playwright test -c e2e",
+    "test:e2e:report": "playwright show-report e2e/report",
+    "typecheck:e2e": "tsc --noEmit -p e2e"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
+    "ioredis": "^6.0.0",
+    "pg": "^8.23.1",
     "railway": "3.12.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   }
 }

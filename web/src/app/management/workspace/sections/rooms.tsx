@@ -67,7 +67,7 @@ export function RoomsSection({ notify, refreshKey, can, reference }: SectionProp
         </div>
         <div className="heading-actions">
           <span className="booking-count">{list.length} rooms</span>
-          {can("rooms:write") && showRates && (
+          {can("rooms:create") && (
             <button className="button-primary" onClick={() => setAdding(true)}>
               <Plus size={16} /> Add room
             </button>

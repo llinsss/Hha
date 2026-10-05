@@ -41,6 +41,8 @@ describe.skipIf(!integration)("rooms, staff accounts and attendance", () => {
     const room = await seedRoom(app, propertyId, { status: "vacant_dirty" });
     const patch = (headers: Record<string, string>, status: string) => app.inject({ method: "PATCH", url: `${M}/rooms/${room.id}`, headers, payload: { status } });
     expect((await patch(housekeeping.headers, "maintenance")).statusCode).toBe(403);
+    const created = await app.inject({ method: "POST", url: `${M}/rooms`, headers: housekeeping.headers, payload: { roomNumber: "HK1", roomType: "Studio", nightlyRateKobo: 1 } });
+    expect(created.statusCode).toBe(403);
     expect((await patch(housekeeping.headers, "vacant_clean")).json()).toEqual({ id: room.id, status: "vacant_clean" });
     expect((await patch(manager.headers, "occupied")).json()).toMatchObject({ code: "INVALID_TRANSITION" });
     expect((await patch(manager.headers, "out_of_order")).statusCode).toBe(200);

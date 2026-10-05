@@ -55,7 +55,7 @@ Everything is under `/api/v1` except the health probes, `/openapi.json`, `/docs`
 | `GET /management/payments`, `GET …/payments/export` | `payments:read` | Payment register with totals; CSV export |
 | `PATCH /management/payments/{id}` | `payments:confirm` | Confirm a pending bank transfer |
 | `GET, PATCH /management/payment-exceptions[/{id}]` | `payments:confirm` | Exception queue and resolution notes |
-| `GET, POST /management/rooms`, `PATCH /…/{id}`, `GET /…/{id}/history` | `rooms:read` / `:write` | Rooms, state changes, history |
+| `GET, POST /management/rooms`, `PATCH /…/{id}`, `GET /…/{id}/history` | `rooms:read` / `rooms:create` (add) / `rooms:write` (state) | Rooms, state changes, history |
 | `GET, POST /management/staff`, `PATCH /…/{id}`, `POST /…/{id}/temporary-password` | `staff:read` / `:write` | Onboarding, employment status, password reset |
 | `GET, POST /management/attendance`, `GET /…/self` | `attendance:read` / authenticated | Team state; your own clock in/out |
 | `GET /management/inventory`, `POST /…/items`, `POST /…/movements` | `inventory:read` / `:write` | Stock items and the movement ledger |

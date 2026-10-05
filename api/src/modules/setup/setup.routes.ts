@@ -61,7 +61,9 @@ const setupRoutes: FastifyPluginAsyncTypebox = async (app) => {
     async (request, reply) => {
       const supplied = request.headers["x-setup-secret"];
       const bySecret = secretDigest !== null && typeof supplied === "string" && timingSafeEqual(Buffer.from(sha256Hex(supplied), "hex"), secretDigest);
-      if (!bySecret && !localDevelopment(request)) throw Errors.forbidden("Setup authorization failed", "SETUP_FORBIDDEN");
+      // A key that is sent must be right; the loopback convenience only applies when none is sent.
+      const allowed = supplied === undefined ? localDevelopment(request) : bySecret;
+      if (!allowed) throw Errors.forbidden("Setup authorization failed", "SETUP_FORBIDDEN");
 
       const body = request.body;
       const fullName = body.fullName.trim();

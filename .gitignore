@@ -32,3 +32,7 @@ yarn-error.log*
 # local development database and deployment settings
 .local/
 .vercel
+
+# Playwright output
+e2e/report/
+e2e/results/

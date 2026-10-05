@@ -23,6 +23,8 @@ export const PERMISSIONS = [
   "reservations:write",
   "rooms:read",
   "rooms:write",
+  /** Adding rooms to the inventory (housekeeping may change state but not create rooms). */
+  "rooms:create",
   "staff:read",
   "staff:write",
   "attendance:read",
@@ -45,8 +47,8 @@ const ALL: readonly Permission[] = PERMISSIONS;
 
 export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlySet<Permission>>> = Object.freeze({
   owner: new Set(ALL),
-  manager: new Set<Permission>(["dashboard:read", "reservations:read", "reservations:write", "rooms:read", "rooms:write", "staff:read", "staff:write", "attendance:read", "attendance:write", "pos:read", "pos:write", "inventory:read", "inventory:write", "menu:write", "payments:read", "payments:confirm", "reports:read"]),
-  front_desk: new Set<Permission>(["dashboard:read", "reservations:read", "reservations:write", "rooms:read", "rooms:write"]),
+  manager: new Set<Permission>(["dashboard:read", "reservations:read", "reservations:write", "rooms:read", "rooms:write", "rooms:create", "staff:read", "staff:write", "attendance:read", "attendance:write", "pos:read", "pos:write", "inventory:read", "inventory:write", "menu:write", "payments:read", "payments:confirm", "reports:read"]),
+  front_desk: new Set<Permission>(["dashboard:read", "reservations:read", "reservations:write", "rooms:read", "rooms:write", "rooms:create"]),
   housekeeping: new Set<Permission>(["rooms:read", "rooms:write"]),
   restaurant_cashier: new Set<Permission>(["pos:read", "pos:write"]),
   restaurant_manager: new Set<Permission>(["pos:read", "pos:write", "inventory:read", "inventory:write", "menu:write", "staff:read", "attendance:read", "attendance:write", "reports:read"]),

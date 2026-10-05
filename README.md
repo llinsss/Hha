@@ -7,6 +7,7 @@ The operations system for Houzz Hills serviced apartments (Kaduna, Nigeria): pub
 | [`api/`](api) | Backend: auth, bookings, Paystack/Flutterwave checkout and webhooks, payment register and exceptions, rooms, staff, attendance, POS, inventory, owner settings, live events, jobs, metrics | Fastify 5, TypeORM 1, PostgreSQL 16, Redis 7, JWT, OpenAPI |
 | [`web/`](web) | Frontend: staff/owner workspace, public booking and payment result pages | Next.js 16, React 19 |
 | [`.railway/`](.railway) | Railway infrastructure as code | `railway/iac` |
+| [`e2e/`](e2e) | Full-stack browser tests | Playwright (Chromium) |
 | [`docs/`](docs) | Product requirements (`PRD.md`) | |
 
 ## Run the whole stack locally
@@ -23,6 +24,33 @@ docker compose up --build
 3. Add rooms; public booking is at <http://localhost:3000/reserve>.
 
 To develop each app separately, see [`api/README.md`](api/README.md) and [`web/README.md`](web/README.md).
+
+## Browser tests (Playwright)
+
+`e2e/` drives the real application in Chromium against your **local PostgreSQL and Redis**:
+
+1. Creates a fresh `houzzhills_e2e` database and runs the migrations.
+2. Starts the API, a fake Paystack, and the production build of the web app (which forwards `/api/v1/*` to the API).
+3. Runs the specs.
+4. **Drops the database and deletes every Redis key it created** (prefix `hh-e2e:`), even when tests fail.
+
+```bash
+npm ci && npx playwright install chromium     # once
+docker compose up -d postgres redis           # or use your own local instances
+export E2E_PG_ADMIN_URL=postgresql://houzzhills:houzzhills@127.0.0.1:5432/postgres   # any existing DB; used to create/drop the test DB
+export E2E_REDIS_URL=redis://127.0.0.1:6379/0
+npm run test:e2e            # 16 specs, about 50 seconds
+npm run test:e2e:report     # HTML report with traces, screenshots and videos of failures
+```
+
+| Spec | Covers |
+| --- | --- |
+| `01-setup` | First run: the setup key is enforced, setup happens only once, owner sign-in |
+| `02-owner-configuration` | Settings: Paystack with a write-only encrypted key, key check, webhook URL. Rooms and history; staff onboarding with a one-time password; stock ledger; menu recipe; POS shift, sale, receipt and variance |
+| `03-reservations-payments` | Staff booking and overlap rejection; transfer, owner confirmation and CSV export; check-in/out offered per the API; cancellation with reason; search |
+| `04-staff-roles` | Forced password change; front desk, housekeeping and manager see only what the API grants |
+| `05-live-updates` | One user's change appears on another user's open page |
+| `06-public-booking` | `/reserve` → hosted checkout → signed webhook through the web origin → confirmed; a late payment becomes an exception the owner resolves |
 
 ## Architecture
 
