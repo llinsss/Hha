@@ -144,7 +144,9 @@ export function createHttpClient(baseUrl: string): ApiClient {
     reservations: {
       list: async () => (await request<{ reservations: Reservation[] }>("GET", "/management/reservations")).reservations,
       create: async (input) => (await request<{ reservation: Reservation }>("POST", "/management/reservations", { body: input })).reservation,
-      updateStatus: (id, status) => request<void>("PATCH", `/management/reservations/${encodeURIComponent(id)}`, { body: { status } }),
+      updateStatus: async (id, status, reason) => {
+        await request<unknown>("PATCH", `/management/reservations/${encodeURIComponent(id)}`, { body: reason ? { status, reason } : { status } });
+      },
       recordPayment: async (id, input) =>
         (
           await request<{ payment: { paymentStatus: "pending" | "settled" } }>("POST", `/management/reservations/${encodeURIComponent(id)}/payments`, {
@@ -161,13 +163,13 @@ export function createHttpClient(baseUrl: string): ApiClient {
 
     rooms: {
       list: async () => (await request<{ rooms: Room[] }>("GET", "/management/rooms")).rooms,
-      create: async (input) => (await request<{ room: Room }>("POST", "/management/rooms", { body: input })).room,
+      create: (input) => request<{ created: number; roomIds: string[] }>("POST", "/management/rooms", { body: input }),
       updateStatus: (id, status) => request<void>("PATCH", `/management/rooms/${encodeURIComponent(id)}`, { body: { status } }),
     },
 
     staff: {
       list: async () => (await request<{ staff: Staff[] }>("GET", "/management/staff")).staff,
-      create: async (input) => (await request<{ staff: Staff }>("POST", "/management/staff", { body: input })).staff,
+      create: async (input) => (await request<{ staff: { id: string; userId: string; temporaryPassword?: string } }>("POST", "/management/staff", { body: input })).staff,
       updateStatus: (id, employmentStatus) => request<void>("PATCH", `/management/staff/${encodeURIComponent(id)}`, { body: { employmentStatus } }),
     },
 
@@ -178,13 +180,15 @@ export function createHttpClient(baseUrl: string): ApiClient {
 
     inventory: {
       list: async () => (await request<{ items: InventoryItem[] }>("GET", "/management/inventory")).items,
-      createItem: async (input) => (await request<{ item: InventoryItem }>("POST", "/management/inventory", { body: input })).item,
-      recordMovement: (input) => request<void>("POST", "/management/inventory", { body: input }),
+      createItem: async (input) => (await request<{ item: { id: string } }>("POST", "/management/inventory/items", { body: input })).item,
+      recordMovement: async (input) => {
+        await request<unknown>("POST", "/management/inventory/movements", { body: input });
+      },
     },
 
     menu: {
       list: async () => (await request<{ menu: MenuItem[] }>("GET", "/management/menu")).menu,
-      create: async (input) => (await request<{ item: MenuItem }>("POST", "/management/menu", { body: input })).item,
+      create: async (input) => (await request<{ item: { id: string } }>("POST", "/management/menu", { body: input })).item,
     },
 
     pos: {

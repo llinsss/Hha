@@ -4,7 +4,9 @@ import type { DataSource } from "typeorm";
 import type { AppConfig } from "../config/env.js";
 import type { Permission } from "../lib/permissions.js";
 import type { Principal, SessionService } from "../modules/auth/session.service.js";
+import type { PaymentProvider } from "../modules/payments/providers/index.js";
 import type { IdempotencyOptions, IdempotencyState } from "../plugins/idempotency.js";
+import type { AppMetrics } from "../plugins/metrics.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -12,6 +14,9 @@ declare module "fastify" {
     db: DataSource;
     redis: Redis;
     sessions: SessionService;
+    /** The configured payment provider, or null when online payment is disabled. */
+    paymentProvider: PaymentProvider | null;
+    metrics: AppMetrics;
     /** Verifies the bearer access token and loads `request.principal`. */
     authenticate: preHandlerAsyncHookHandler;
     /** Authenticates, enforces the temporary-password gate, then checks every listed permission. */

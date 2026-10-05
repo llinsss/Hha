@@ -77,7 +77,8 @@ describe.skipIf(!integration)("authentication", () => {
   });
 
   it("requires a valid bearer token", async () => {
-    expect((await app.inject(`${AUTH}/session`)).json()).toMatchObject({ statusCode: 401, code: "UNAUTHORIZED" });
+    expect((await app.inject(`${AUTH}/session`)).json()).toEqual({ user: null });
+    expect((await app.inject({ url: `${AUTH}/session`, headers: { authorization: "Basic abc" } })).json()).toMatchObject({ statusCode: 401, code: "UNAUTHORIZED" });
     expect((await app.inject({ url: `${AUTH}/session`, headers: bearer("not.a.jwt") })).json()).toMatchObject({ code: "TOKEN_INVALID" });
 
     const user = await seedUser(app, propertyId);

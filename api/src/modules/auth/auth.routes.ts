@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from "@fastify/type-provider-typebox";
 import type { FastifyRequest } from "fastify";
-import { AppError, Errors } from "../../lib/errors.js";
+import { AppError } from "../../lib/errors.js";
+import { requirePrincipal } from "./principal.js";
 import { AuthService } from "./auth.service.js";
 import { ChangePasswordSchema, LoginSchema, LogoutSchema, RefreshSchema, SessionSchema } from "./auth.schemas.js";
 import { REFRESH_COOKIE, assertTrustedOrigin, clearRefreshCookie, setRefreshCookie } from "./cookies.js";
@@ -19,11 +20,6 @@ function toUser(principal: Principal) {
     propertyId: principal.propertyId,
     mustChangePassword: principal.mustChangePassword,
   };
-}
-
-function requirePrincipal(request: FastifyRequest): Principal {
-  if (!request.principal) throw Errors.unauthorized();
-  return request.principal;
 }
 
 const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
@@ -71,8 +67,12 @@ const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
   app.get(
     "/session",
-    { schema: SessionSchema, preHandler: app.authorize(), config: { allowPasswordChangeRequired: true } },
-    async (request) => ({ user: toUser(requirePrincipal(request)) }),
+    { schema: SessionSchema, config: { allowPasswordChangeRequired: true } },
+    async (request, reply) => {
+      if (request.headers.authorization === undefined) return { user: null };
+      await app.authenticate.call(app, request, reply);
+      return { user: toUser(requirePrincipal(request)) };
+    },
   );
 
   app.post(

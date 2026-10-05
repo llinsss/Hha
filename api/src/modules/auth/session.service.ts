@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { Redis } from "ioredis";
 import type { DataSource, EntityManager } from "typeorm";
 import { ApiSessionEntity } from "../../db/entities/index.js";
+import { withTransaction } from "../../db/sql.js";
 import { randomToken, safeEqualHex, sha256Hex } from "../../lib/crypto.js";
 import { Errors } from "../../lib/errors.js";
 import { isRole, type Role } from "../../lib/permissions.js";
@@ -133,7 +134,8 @@ export class SessionService {
     if (!parsed) throw Errors.unauthorized("Refresh token is missing or invalid", "REFRESH_INVALID");
     const presentedHash = sha256Hex(parsed.secret);
 
-    const outcome = await this.db.transaction(async (manager) => {
+    const outcome = await withTransaction(this.db, async (tx) => {
+      const manager = tx.runner.manager;
       const session = await manager
         .getRepository(ApiSessionEntity)
         .createQueryBuilder("s")

@@ -38,6 +38,8 @@
     "fastify-plugin": "^6.0.0",
     "ioredis": "^5.11.1",
     "pg": "^8.23.1",
+    "prom-client": "^15.1.3",
+    "secure-json-parse": "^4.1.0",
     "typebox": "^1.3.35",
     "typeorm": "^1.1.1"
   },

@@ -31,7 +31,15 @@ export default defineConfig([
   },
   {
     files: ["test/**/*.ts"],
-    rules: { "@typescript-eslint/no-non-null-assertion": "off", "@typescript-eslint/unbound-method": "off", "@typescript-eslint/no-unsafe-assignment": "off" },
+    // Tests read raw `db.query()` rows (typed any) to assert database state directly.
+    rules: {
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/unbound-method": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+    },
   },
   {
     files: ["eslint.config.js"],

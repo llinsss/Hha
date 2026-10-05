@@ -3,12 +3,28 @@ import sensible from "@fastify/sensible";
 import type { TypeBoxTypeProvider } from "@fastify/type-provider-typebox";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import type { AppConfig } from "./config/env.js";
+import attendanceRoutes from "./modules/attendance/attendance.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import dashboardRoutes from "./modules/dashboard/dashboard.routes.js";
+import eventRoutes from "./modules/events/events.routes.js";
 import healthRoutes from "./modules/health/health.routes.js";
+import inventoryRoutes from "./modules/inventory/inventory.routes.js";
+import jobRoutes from "./modules/jobs/jobs.routes.js";
+import menuRoutes from "./modules/menu/menu.routes.js";
+import { paymentExceptionRoutes, paymentRoutes } from "./modules/payments/payments.routes.js";
+import posRoutes from "./modules/pos/pos.routes.js";
+import publicRoutes from "./modules/public/public.routes.js";
+import reservationRoutes from "./modules/reservations/reservations.routes.js";
+import roomRoutes from "./modules/rooms/rooms.routes.js";
+import setupRoutes from "./modules/setup/setup.routes.js";
+import staffRoutes from "./modules/staff/staff.routes.js";
+import webhookRoutes from "./modules/webhooks/webhooks.routes.js";
 import authPlugin from "./plugins/auth.js";
 import databasePlugin from "./plugins/database.js";
 import errorHandler from "./plugins/error-handler.js";
 import idempotencyPlugin from "./plugins/idempotency.js";
+import metricsPlugin from "./plugins/metrics.js";
+import paymentsPlugin from "./plugins/payments.js";
 import redisPlugin from "./plugins/redis.js";
 import securityPlugin from "./plugins/security.js";
 import swaggerPlugin from "./plugins/swagger.js";
@@ -74,9 +90,9 @@ export function buildApp(config: AppConfig) {
   }).withTypeProvider<TypeBoxTypeProvider>();
 
   app.decorate("config", config);
-  app.addHook("onSend", async (request, reply, payload) => {
+  // Set early so every response carries it, including hijacked streams and errors.
+  app.addHook("onRequest", async (request, reply) => {
     reply.header("x-request-id", request.id);
-    return payload;
   });
 
   // Order matters: infrastructure, then cross-cutting concerns, then routes.
@@ -88,12 +104,33 @@ export function buildApp(config: AppConfig) {
   void app.register(swaggerPlugin);
   void app.register(authPlugin);
   void app.register(idempotencyPlugin);
+  void app.register(paymentsPlugin);
+  void app.register(metricsPlugin);
 
   void app.register(healthRoutes, { prefix: "/health" });
   void app.register(
     async (api) => {
       await api.register(authRoutes, { prefix: "/auth" });
-      // Register further feature modules here, e.g. api.register(roomRoutes, { prefix: "/rooms" }).
+      await api.register(setupRoutes, { prefix: "/setup" });
+      await api.register(publicRoutes, { prefix: "/public" });
+      await api.register(webhookRoutes, { prefix: "/webhooks" });
+      await api.register(jobRoutes, { prefix: "/cron" });
+      await api.register(
+        async (management) => {
+          await management.register(dashboardRoutes, { prefix: "/dashboard" });
+          await management.register(eventRoutes, { prefix: "/events" });
+          await management.register(reservationRoutes, { prefix: "/reservations" });
+          await management.register(paymentRoutes, { prefix: "/payments" });
+          await management.register(paymentExceptionRoutes, { prefix: "/payment-exceptions" });
+          await management.register(roomRoutes, { prefix: "/rooms" });
+          await management.register(staffRoutes, { prefix: "/staff" });
+          await management.register(attendanceRoutes, { prefix: "/attendance" });
+          await management.register(inventoryRoutes, { prefix: "/inventory" });
+          await management.register(menuRoutes, { prefix: "/menu" });
+          await management.register(posRoutes, { prefix: "/pos" });
+        },
+        { prefix: "/management" },
+      );
     },
     { prefix: config.apiPrefix },
   );

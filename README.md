@@ -5,7 +5,7 @@ The staff management system for Houzz Hills serviced apartments (Kaduna, Nigeria
 | Folder | What | Stack |
 | --- | --- | --- |
 | [`web/`](web) | Staff workspace UI, strictly frontend. Runs on built-in sample data until it is pointed at the API; no API routes or database code. | Next.js 16, React 19, Tailwind 4 |
-| [`api/`](api) | Standalone backend: auth, RBAC, OpenAPI, health, idempotency, migrations. Business modules are ported here next. | Fastify 5, TypeORM 1, PostgreSQL, Redis, JWT, Swagger |
+| [`api/`](api) | The backend from `docs/PRD.md`: auth, bookings and hosted checkout, verified payment webhooks, payment register and exceptions, rooms, staff, attendance, POS, inventory, live events, jobs, metrics. | Fastify 5, TypeORM 1, PostgreSQL, Redis, JWT, OpenAPI |
 | [`docs/`](docs) | Product requirements and backend handoff (`PRD.md`) | |
 
 Each folder is an independent npm package with its own lockfile, so it can be deployed (or moved into its own repository) separately.

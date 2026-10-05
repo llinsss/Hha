@@ -206,8 +206,13 @@ export default function ManagementPage() {
     finally { setBusy(false); }
   }
   async function changeReservation(reservation: Reservation, status: ReservationStatus) {
+    let reason: string | undefined;
+    if (status === "cancelled" || status === "no_show") {
+      reason = window.prompt(`Reason for marking ${reservation.reference} as ${status.replace("_", " ")} (recorded in the audit log)`)?.trim();
+      if (!reason) return;
+    }
     try {
-      await api.reservations.updateStatus(reservation.id, status); notify(`${reservation.reference} updated`);
+      await api.reservations.updateStatus(reservation.id, status, reason); notify(`${reservation.reference} updated`);
       if (active === "Reservations") await loadReservations(); else await loadDashboard();
     } catch (e) { notify(errorMessage(e, "Reservation update failed")); }
   }

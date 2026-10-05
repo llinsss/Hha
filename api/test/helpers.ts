@@ -7,6 +7,20 @@ import type { Role } from "../src/lib/permissions.js";
 export const integration = Boolean(process.env.TEST_DATABASE_URL && process.env.TEST_REDIS_URL);
 export const WEB_ORIGIN = "https://app.houzzhills.test";
 export const PASSWORD = "correct horse battery staple";
+export const CRON_SECRET = "cron-secret-for-integration-tests-0123456789";
+export const SETUP_SECRET = "setup-secret-for-integration-tests-0123456789";
+export const METRICS_TOKEN = "metrics-token-for-integration-tests-012345678";
+
+/** Environment for an app wired to the fake Paystack server. */
+export function paystackEnv(baseUrl: string): Record<string, string> {
+  return {
+    PAYMENT_PROVIDER: "paystack",
+    PAYSTACK_SECRET_KEY: "sk_test_fake_paystack_secret_for_tests",
+    PAYSTACK_BASE_URL: baseUrl,
+    PUBLIC_WEB_URL: "https://app.houzzhills.test",
+    PROVIDER_TIMEOUT_MS: "3000",
+  };
+}
 
 export function testConfig(overrides: Record<string, string> = {}) {
   return loadConfig({
@@ -21,6 +35,10 @@ export function testConfig(overrides: Record<string, string> = {}) {
     DOCS_ENABLED: "true",
     AUTH_RATE_LIMIT_MAX: "1000",
     RATE_LIMIT_MAX: "10000",
+    PUBLIC_BOOKING_RATE_LIMIT_MAX: "10000",
+    CRON_SECRET: CRON_SECRET,
+    SETUP_SECRET: SETUP_SECRET,
+    METRICS_TOKEN: METRICS_TOKEN,
     ...overrides,
   });
 }
@@ -68,4 +86,42 @@ export async function login(app: App, email: string, password = PASSWORD): Promi
 
 export function bearer(token: string) {
   return { authorization: `Bearer ${token}` };
+}
+
+/** The property public endpoints serve (created first by global setup). */
+export async function primaryPropertyId(app: App): Promise<string> {
+  const rows: Array<{ id: string }> = await app.db.query("SELECT id FROM properties ORDER BY created_at, id LIMIT 1");
+  return rows[0]!.id;
+}
+
+export async function seedRoom(
+  app: App,
+  propertyId: string,
+  options: { roomType?: string; rateKobo?: number; capacity?: number; status?: string; roomNumber?: string } = {},
+): Promise<{ id: string; roomType: string; roomNumber: string }> {
+  const roomType = options.roomType ?? `Suite ${randomUUID().slice(0, 8)}`;
+  const roomNumber = options.roomNumber ?? randomUUID().slice(0, 8);
+  const rows: Array<{ id: string }> = await app.db.query(
+    "INSERT INTO rooms(property_id, room_number, room_type, nightly_rate_kobo, capacity, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    [propertyId, roomNumber, roomType, options.rateKobo ?? 5_000_000, options.capacity ?? 2, options.status ?? "vacant_clean"],
+  );
+  return { id: rows[0]!.id, roomType, roomNumber };
+}
+
+/** Seeds a user with the role and returns a ready access token. */
+export async function signedIn(app: App, propertyId: string, role: Role, options: { staffProfile?: boolean } = {}) {
+  const user = await seedUser(app, propertyId, { role });
+  if (options.staffProfile) {
+    await app.db.query(
+      "INSERT INTO staff_profiles(property_id, user_id, employee_number, department, job_title) VALUES ($1, $2, $3, 'Ops', 'Staff')",
+      [propertyId, user.id, `E-${randomUUID().slice(0, 8)}`],
+    );
+  }
+  const { accessToken } = await login(app, user.email);
+  return { user, token: accessToken, headers: bearer(accessToken) };
+}
+
+/** YYYY-MM-DD in Africa/Lagos, offset by whole days. */
+export function lagosDate(days = 0): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Lagos", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(Date.now() + days * 86_400_000));
 }

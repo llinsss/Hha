@@ -1,14 +1,14 @@
 import { Type } from "typebox";
-import { errorResponses } from "../../lib/schemas.js";
+import { StringEnum, errorResponses } from "../../lib/schemas.js";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../../lib/password.js";
-import { ROLES, type Role } from "../../lib/permissions.js";
+import { ROLES } from "../../lib/permissions.js";
 
 const SessionUser = Type.Object(
   {
     id: Type.String({ format: "uuid" }),
     email: Type.String(),
     fullName: Type.String(),
-    role: Type.Unsafe<Role>({ type: "string", enum: [...ROLES] }),
+    role: StringEnum(ROLES),
     propertyId: Type.String({ format: "uuid" }),
     mustChangePassword: Type.Boolean(),
   },
@@ -58,9 +58,10 @@ export const LogoutSchema = {
 
 export const SessionSchema = {
   tags: ["auth"],
-  summary: "Current signed-in user",
+  summary: "Current signed-in user, or null",
+  description: "Without an Authorization header returns `{ user: null }`. An invalid or expired token returns 401 so the client can refresh.",
   security: [{ bearerAuth: [] }],
-  response: { 200: Type.Object({ user: SessionUser }, { additionalProperties: false }), ...errorResponses(401) },
+  response: { 200: Type.Object({ user: Type.Union([SessionUser, Type.Null()]) }, { additionalProperties: false }), ...errorResponses(401) },
 };
 
 export const ChangePasswordSchema = {

@@ -3,6 +3,7 @@ import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import { QueryFailedError } from "typeorm";
 import { AppError } from "../lib/errors.js";
+import { ProviderError } from "../modules/payments/providers/index.js";
 import type { ErrorResponse } from "../lib/schemas.js";
 
 type Normalised = { statusCode: number; code: string; message: string; details?: ReadonlyArray<{ path: string; message: string }>; expose: boolean };
@@ -12,6 +13,7 @@ const PG_ERRORS: Record<string, Omit<Normalised, "details">> = {
   "23505": { statusCode: 409, code: "UNIQUE_VIOLATION", message: "A record with these details already exists", expose: true },
   "23503": { statusCode: 409, code: "REFERENCE_VIOLATION", message: "A related record does not exist or is still in use", expose: true },
   "23514": { statusCode: 422, code: "CHECK_VIOLATION", message: "The request violates a data rule", expose: true },
+  "23P01": { statusCode: 409, code: "BOOKING_CONFLICT", message: "The room is already booked for some of those dates", expose: true },
   "22P02": { statusCode: 422, code: "INVALID_INPUT_SYNTAX", message: "A value has an invalid format", expose: true },
   "40001": { statusCode: 409, code: "SERIALIZATION_FAILURE", message: "The request conflicted with a concurrent change; retry it", expose: true },
   "40P01": { statusCode: 409, code: "DEADLOCK_DETECTED", message: "The request conflicted with a concurrent change; retry it", expose: true },
@@ -21,6 +23,9 @@ const PG_ERRORS: Record<string, Omit<Normalised, "details">> = {
 function normalise(error: unknown): Normalised {
   if (error instanceof AppError) {
     return { statusCode: error.statusCode, code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}), expose: true };
+  }
+  if (error instanceof ProviderError) {
+    return { statusCode: 502, code: "PAYMENT_PROVIDER_UNAVAILABLE", message: "The payment provider could not be reached. Try again shortly.", expose: true };
   }
   if (error instanceof QueryFailedError) {
     const sqlState = (error.driverError as { code?: unknown } | undefined)?.code;

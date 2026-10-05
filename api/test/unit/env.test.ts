@@ -53,6 +53,17 @@ describe("loadConfig", () => {
     );
   });
 
+  it("requires complete provider settings and a return URL for online payments", () => {
+    expect(issuesOf({ ...base, PAYMENT_PROVIDER: "paystack" })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/PAYSTACK_SECRET_KEY/), expect.stringMatching(/PUBLIC_WEB_URL/)]),
+    );
+    expect(issuesOf({ ...base, PAYMENT_PROVIDER: "flutterwave", FLUTTERWAVE_SECRET_KEY: "FLWSECK-abcdef" })[0]).toMatch(/FLUTTERWAVE_WEBHOOK_HASH/);
+    const config = loadConfig({ ...base, PAYMENT_PROVIDER: "paystack", PAYSTACK_SECRET_KEY: "sk_test_abcdef", PUBLIC_WEB_URL: "https://app.example.com/" });
+    expect(config.payments.provider).toMatchObject({ name: "paystack", baseUrl: "https://api.paystack.co" });
+    expect(config.payments.publicWebUrl).toBe("https://app.example.com");
+    expect(issuesOf({ ...base, NODE_ENV: "production", CORS_ORIGINS: "https://app.example.com", PAYMENT_PROVIDER: "paystack", PAYSTACK_SECRET_KEY: "sk_live_abcdef", PUBLIC_WEB_URL: "http://app.example.com" })[0]).toMatch(/PUBLIC_WEB_URL must use https/);
+  });
+
   it("disables docs by default in production", () => {
     const config = loadConfig({ ...base, NODE_ENV: "production", CORS_ORIGINS: "https://app.example.com" });
     expect(config.docsEnabled).toBe(false);

@@ -63,6 +63,30 @@ const EnvSchema = Type.Object({
   AUTH_RATE_LIMIT_WINDOW_MS: Int(60_000, 1000),
   LOGIN_MAX_FAILURES: Int(7, 1, 100),
   LOGIN_LOCKOUT_SECONDS: Int(900, 60, 86_400),
+  /** Public booking attempts per client IP per minute. */
+  PUBLIC_BOOKING_RATE_LIMIT_MAX: Int(10, 1),
+
+  /** Web origin guests return to after hosted checkout (…/payment-result?reference=…). */
+  PUBLIC_WEB_URL: Type.Optional(Type.String({ minLength: 1 })),
+  PAYMENT_PROVIDER: Type.Union([Type.Literal("none"), Type.Literal("paystack"), Type.Literal("flutterwave")], { default: "none" }),
+  PAYSTACK_SECRET_KEY: Type.Optional(Type.String({ minLength: 8 })),
+  PAYSTACK_BASE_URL: Type.String({ default: "https://api.paystack.co", minLength: 1 }),
+  FLUTTERWAVE_SECRET_KEY: Type.Optional(Type.String({ minLength: 8 })),
+  FLUTTERWAVE_WEBHOOK_HASH: Type.Optional(Type.String({ minLength: 16 })),
+  FLUTTERWAVE_BASE_URL: Type.String({ default: "https://api.flutterwave.com", minLength: 1 }),
+  PROVIDER_TIMEOUT_MS: Int(12_000, 1000, 60_000),
+  HOLD_MINUTES: Int(20, 5, 120),
+  MAX_STAY_NIGHTS: Int(90, 1, 365),
+  BOOKING_HORIZON_DAYS: Int(365, 1, 730),
+
+  /** Bearer secret for the scheduler-only job endpoints (/jobs/*). Jobs are disabled when unset. */
+  CRON_SECRET: Type.Optional(Type.String({ minLength: 32 })),
+  BANK_TRANSFER_REVIEW_HOURS: Int(48, 1, 720),
+  RECONCILIATION_WINDOW_HOURS: Int(48, 1, 720),
+  /** One-time owner bootstrap secret sent as x-setup-secret. Setup is closed when unset (except loopback in development). */
+  SETUP_SECRET: Type.Optional(Type.String({ minLength: 32 })),
+  /** Bearer token for GET /metrics. The endpoint is not registered when unset. */
+  METRICS_TOKEN: Type.Optional(Type.String({ minLength: 32 })),
 });
 
 type Env = Static<typeof EnvSchema>;
@@ -100,8 +124,22 @@ export type AppConfig = Readonly<{
     authWindowMs: number;
     loginMaxFailures: number;
     loginLockoutSeconds: number;
+    publicBookingMax: number;
   }>;
+  payments: Readonly<{
+    provider: PaymentProviderConfig | null;
+    publicWebUrl: string | null;
+    timeoutMs: number;
+  }>;
+  booking: Readonly<{ holdMinutes: number; maxStayNights: number; horizonDays: number }>;
+  jobs: Readonly<{ cronSecret: string | null; bankTransferReviewHours: number; reconciliationWindowHours: number }>;
+  setupSecret: string | null;
+  metricsToken: string | null;
 }>;
+
+export type PaymentProviderConfig =
+  | Readonly<{ name: "paystack"; secretKey: string; baseUrl: string }>
+  | Readonly<{ name: "flutterwave"; secretKey: string; webhookHash: string; baseUrl: string }>;
 
 export class ConfigError extends Error {
   constructor(readonly issues: readonly string[]) {
@@ -111,6 +149,17 @@ export class ConfigError extends Error {
 }
 
 const PLACEHOLDER = /replace|change-?me|example|secret123|^x+$/i;
+
+function parseBaseUrl(name: string, raw: string, isProduction: boolean, issues: string[]): string {
+  let parsed: URL | undefined;
+  try { parsed = new URL(raw); } catch { /* reported below */ }
+  if (!parsed || !["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    issues.push(`${name} must be an absolute http(s) URL without credentials, query or fragment`);
+    return raw;
+  }
+  if (isProduction && parsed.protocol !== "https:") issues.push(`${name} must use https in production`);
+  return parsed.href.replace(/\/+$/, "");
+}
 
 function parseOrigins(raw: string, issues: string[]): string[] {
   const origins = raw.split(",").map((value) => value.trim()).filter(Boolean);
@@ -145,8 +194,22 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   const corsOrigins = parseOrigins(env.CORS_ORIGINS, issues);
 
   if (env.COOKIE_SAME_SITE === "none" && !env.COOKIE_SECURE) issues.push("COOKIE_SAME_SITE=none requires COOKIE_SECURE=true");
+
+  let provider: PaymentProviderConfig | null = null;
+  if (env.PAYMENT_PROVIDER === "paystack") {
+    if (!env.PAYSTACK_SECRET_KEY) issues.push("PAYSTACK_SECRET_KEY is required when PAYMENT_PROVIDER=paystack");
+    else provider = { name: "paystack", secretKey: env.PAYSTACK_SECRET_KEY, baseUrl: parseBaseUrl("PAYSTACK_BASE_URL", env.PAYSTACK_BASE_URL, isProduction, issues) };
+  } else if (env.PAYMENT_PROVIDER === "flutterwave") {
+    if (!env.FLUTTERWAVE_SECRET_KEY || !env.FLUTTERWAVE_WEBHOOK_HASH) issues.push("FLUTTERWAVE_SECRET_KEY and FLUTTERWAVE_WEBHOOK_HASH are required when PAYMENT_PROVIDER=flutterwave");
+    else provider = { name: "flutterwave", secretKey: env.FLUTTERWAVE_SECRET_KEY, webhookHash: env.FLUTTERWAVE_WEBHOOK_HASH, baseUrl: parseBaseUrl("FLUTTERWAVE_BASE_URL", env.FLUTTERWAVE_BASE_URL, isProduction, issues) };
+  }
+  const publicWebUrl = env.PUBLIC_WEB_URL ? parseBaseUrl("PUBLIC_WEB_URL", env.PUBLIC_WEB_URL, isProduction, issues) : null;
+  if (env.PAYMENT_PROVIDER !== "none" && !publicWebUrl) issues.push("PUBLIC_WEB_URL is required when a payment provider is configured");
   if (isProduction) {
-    if (PLACEHOLDER.test(env.JWT_ACCESS_SECRET)) issues.push("JWT_ACCESS_SECRET still contains a placeholder value");
+    for (const name of ["JWT_ACCESS_SECRET", "CRON_SECRET", "SETUP_SECRET", "METRICS_TOKEN", "PAYSTACK_SECRET_KEY", "FLUTTERWAVE_SECRET_KEY", "FLUTTERWAVE_WEBHOOK_HASH"] as const) {
+      const value = env[name];
+      if (value && PLACEHOLDER.test(value)) issues.push(`${name} still contains a placeholder value`);
+    }
     if (!env.COOKIE_SECURE) issues.push("COOKIE_SECURE must be true in production");
     if (corsOrigins.length === 0) issues.push("CORS_ORIGINS must list the production web origin(s)");
     if (corsOrigins.some((origin) => origin.startsWith("http://"))) issues.push("CORS_ORIGINS must use https in production");
@@ -191,6 +254,16 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       authWindowMs: env.AUTH_RATE_LIMIT_WINDOW_MS,
       loginMaxFailures: env.LOGIN_MAX_FAILURES,
       loginLockoutSeconds: env.LOGIN_LOCKOUT_SECONDS,
+      publicBookingMax: env.PUBLIC_BOOKING_RATE_LIMIT_MAX,
     }),
+    payments: Object.freeze({ provider: provider ? Object.freeze(provider) : null, publicWebUrl, timeoutMs: env.PROVIDER_TIMEOUT_MS }),
+    booking: Object.freeze({ holdMinutes: env.HOLD_MINUTES, maxStayNights: env.MAX_STAY_NIGHTS, horizonDays: env.BOOKING_HORIZON_DAYS }),
+    jobs: Object.freeze({
+      cronSecret: env.CRON_SECRET ?? null,
+      bankTransferReviewHours: env.BANK_TRANSFER_REVIEW_HOURS,
+      reconciliationWindowHours: env.RECONCILIATION_WINDOW_HOURS,
+    }),
+    setupSecret: env.SETUP_SECRET ?? null,
+    metricsToken: env.METRICS_TOKEN ?? null,
   });
 }

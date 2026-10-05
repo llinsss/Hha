@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { UserEntity } from "../../db/entities/index.js";
-import { recordAudit } from "../../lib/audit.js";
+import { withTransaction } from "../../db/sql.js";
+import { recordEvent } from "../../lib/events.js";
 import { sha256Hex } from "../../lib/crypto.js";
 import { AppError, Errors } from "../../lib/errors.js";
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from "../../lib/password.js";
@@ -43,15 +44,16 @@ export class AuthService {
     }
     await this.clearFailures(lockKey);
 
-    const session = await this.app.db.transaction(async (manager) => {
-      const issued = await this.app.sessions.create(manager, user.id, meta);
-      await recordAudit(manager, {
+    const session = await withTransaction(this.app.db, async (tx) => {
+      const issued = await this.app.sessions.create(tx.runner.manager, user.id, meta);
+      await recordEvent(tx, {
         propertyId: user.propertyId,
         actorId: user.id,
         action: "auth.login",
         entityType: "user",
         entityId: user.id,
         details: { sessionId: issued.sessionId, ip: meta.ipAddress },
+        outbox: false,
       });
       return issued;
     });
@@ -91,16 +93,17 @@ export class AuthService {
     if (currentPassword === newPassword) throw Errors.unprocessable("Choose a password different from the current one", "PASSWORD_REUSED");
 
     const passwordHash = await hashPassword(newPassword);
-    await this.app.db.transaction(async (manager) => {
-      await manager.update(UserEntity, { id: user.id }, { passwordHash, mustChangePassword: false });
-      const revoked = await this.app.sessions.revokeAllForUser(manager, user.id, "password_changed", principal.sessionId);
-      await recordAudit(manager, {
+    await withTransaction(this.app.db, async (tx) => {
+      await tx.runner.manager.update(UserEntity, { id: user.id }, { passwordHash, mustChangePassword: false });
+      const revoked = await this.app.sessions.revokeAllForUser(tx.runner.manager, user.id, "password_changed", principal.sessionId);
+      await recordEvent(tx, {
         propertyId: user.propertyId,
         actorId: user.id,
         action: "auth.password_changed",
         entityType: "user",
         entityId: user.id,
         details: { otherSessionsRevoked: revoked },
+        outbox: false,
       });
     });
     await this.app.sessions.refreshCache(principal.sessionId);

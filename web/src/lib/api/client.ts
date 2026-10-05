@@ -54,7 +54,8 @@ export interface ApiClient {
   reservations: {
     list(): Promise<Reservation[]>;
     create(input: NewReservationInput): Promise<Reservation>;
-    updateStatus(id: string, status: ReservationStatus): Promise<void>;
+    /** `reason` is required (and audited) for cancellations and no-shows. */
+    updateStatus(id: string, status: ReservationStatus, reason?: string): Promise<void>;
     recordPayment(id: string, input: RecordPaymentInput): Promise<{ paymentStatus: "pending" | "settled" }>;
   };
   payments: {
@@ -64,12 +65,13 @@ export interface ApiClient {
   };
   rooms: {
     list(): Promise<Room[]>;
-    create(input: NewRoomInput): Promise<Room>;
+    create(input: NewRoomInput): Promise<{ created: number; roomIds: string[] }>;
     updateStatus(id: string, status: RoomStatus): Promise<void>;
   };
   staff: {
     list(): Promise<Staff[]>;
-    create(input: NewStaffInput): Promise<Staff>;
+    /** `temporaryPassword` is returned once when the server generated it. */
+    create(input: NewStaffInput): Promise<{ id: string; userId: string; temporaryPassword?: string }>;
     updateStatus(id: string, status: EmploymentStatus): Promise<void>;
   };
   attendance: {
@@ -78,12 +80,12 @@ export interface ApiClient {
   };
   inventory: {
     list(): Promise<InventoryItem[]>;
-    createItem(input: NewInventoryItemInput): Promise<InventoryItem>;
+    createItem(input: NewInventoryItemInput): Promise<{ id: string }>;
     recordMovement(input: StockMovementInput): Promise<void>;
   };
   menu: {
     list(): Promise<MenuItem[]>;
-    create(input: NewMenuItemInput): Promise<MenuItem>;
+    create(input: NewMenuItemInput): Promise<{ id: string }>;
   };
   pos: {
     /** The current user's open cashier shift and today's orders. */

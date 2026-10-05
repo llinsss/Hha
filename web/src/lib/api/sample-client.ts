@@ -387,9 +387,10 @@ export function createSampleClient(): ApiClient {
           log("reservation.created", reservation.id, reservation.reference);
           return toReservation(reservation);
         }),
-      updateStatus: (reservationId, status) =>
+      updateStatus: (reservationId, status, reason) =>
         respond(() => {
           authorize("reservations:write");
+          if ((status === "cancelled" || status === "no_show") && (reason?.trim().length ?? 0) < 3) fail(422, "REASON_REQUIRED", "Give a reason for this change");
           const { state } = load();
           const reservation = state.reservations.find((entry) => entry.id === reservationId) ?? fail(404, "NOT_FOUND", "Reservation not found");
           const allowed: Partial<Record<ReservationStatus, readonly ReservationStatus[]>> = {
@@ -476,7 +477,7 @@ export function createSampleClient(): ApiClient {
           const room = { id: id("r"), roomNumber, roomType: input.roomType.trim(), rateKobo: input.nightlyRateKobo, capacity: input.capacity, status: "vacant_clean" as RoomStatus, active: true };
           state.rooms.push(room);
           log("room.created", room.id, `Room ${roomNumber}`);
-          return toRoom(room.id);
+          return { created: 1, roomIds: [room.id] };
         }),
       updateStatus: (roomId, status) =>
         respond(() => {
@@ -517,7 +518,7 @@ export function createSampleClient(): ApiClient {
           state.users.push(user);
           state.staff.push(profile);
           log("staff.created", profile.id, user.fullName);
-          return toStaff().find((entry) => entry.id === profile.id)!;
+          return { id: profile.id, userId: user.id };
         }),
       updateStatus: (staffId, status) =>
         respond(() => {
@@ -565,7 +566,7 @@ export function createSampleClient(): ApiClient {
           const item = { id: id("i"), name: input.name.trim(), sku, unit: input.unit.trim() || "unit", quantity: input.quantity, reorderLevel: input.reorderLevel, costKobo: input.costKobo };
           state.stock.push(item);
           log("inventory.item_created", item.id, item.name);
-          return toInventory().find((entry) => entry.id === item.id)!;
+          return { id: item.id };
         }),
       recordMovement: ({ action, itemId, quantity, reason }) =>
         respond(() => {
@@ -599,7 +600,7 @@ export function createSampleClient(): ApiClient {
           const item = { id: id("m"), name: input.name.trim(), category: input.category.trim(), priceKobo: input.priceKobo, recipe: input.recipe };
           state.menu.push(item);
           log("menu.item_created", item.id, item.name);
-          return toMenu().find((entry) => entry.id === item.id)!;
+          return { id: item.id };
         }),
     },
 
